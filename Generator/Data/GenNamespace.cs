@@ -4,36 +4,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UnityObserver.Utils;
 
 namespace UnityObserver.Data
 {
-    internal class GenNamespace
+    internal class GenNamespace : IGeneratable
     {
-        public string ShortName { get; private set; }
-        public string FullName
-        {
-            get
-            {
-                GenNamespace current = this;
-                string fullName = current.ShortName;
-
-                while (current.Parent != null)
-                {
-                    current = current.Parent;
-                    fullName = current.ShortName + "." + fullName;
-                }
-                return fullName;
-            }
-            private set
-            {
-                ShortName = value;
-            }
-        }
-        public List<GenClass> Classes { get; private set; }
-        public List<GenNamespace> Namespaces { get; private set; }
-        public GenNamespace Parent { get; private set; }
-        public GenModule Module { get; private set; }
-
         public GenNamespace(GenModule module, string shortName, GenNamespace parent = null)
         {
             ShortName = shortName;
@@ -48,6 +24,36 @@ namespace UnityObserver.Data
             {
                 GenNamespace ns = new GenNamespace(module, childNs, this);
                 Namespaces.Add(ns);
+            }
+
+            // Create classes
+            foreach (TypeDef type in module.ModuleDef.GetTypes())
+            {
+                if (type.Namespace == FullName)
+                {
+                    GenClass genClass;
+
+                    if (type.IsClass || type.IsInterface)
+                    {
+                        genClass = new GenClass(this, type);
+                    }
+                    else if (type.IsValueType)
+                    {
+                        genClass = new GenStruct(this, type);
+                    }
+                    else if (type.IsEnum)
+                    {
+                        genClass = new GenEnum(this, type);
+                    }
+                    else
+                    {
+                        Logger.Log(LogType.Warning, $"Unsupported type: {type.FullName}");
+                        continue;
+                    }
+
+                    Classes.Add(genClass);
+                    Module.Generator.TypeMap.Add(type, genClass);
+                }
             }
         }
 
@@ -80,5 +86,35 @@ namespace UnityObserver.Data
 
             return childNamespaces.ToList();
         }
+
+        public void Generate()
+        {
+            throw new NotImplementedException();
+        }
+
+        public string ShortName { get; private set; }
+        public string FullName
+        {
+            get
+            {
+                GenNamespace current = this;
+                string fullName = current.ShortName;
+
+                while (current.Parent != null)
+                {
+                    current = current.Parent;
+                    fullName = current.ShortName + "." + fullName;
+                }
+                return fullName;
+            }
+            private set
+            {
+                ShortName = value;
+            }
+        }
+        public List<GenClass> Classes { get; private set; }
+        public List<GenNamespace> Namespaces { get; private set; }
+        public GenNamespace Parent { get; private set; }
+        public GenModule Module { get; private set; }
     }
 }

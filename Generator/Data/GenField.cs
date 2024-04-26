@@ -6,7 +6,11 @@ using System.Threading.Tasks;
 
 namespace UnityObserver.Data
 {
-    internal class GenField
+    internal class GenField : IGeneratable
     {
+        public void Generate()
+        {
+            throw new NotImplementedException();
+        }
     }
 }

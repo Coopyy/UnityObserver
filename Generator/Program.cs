@@ -12,25 +12,18 @@ namespace UnityObserver
     {
         static void Main(string[] args)
         {
-            GenModule module = new GenModule(ModuleDefMD.Load(@"F:\Steam\steamapps\common\Unturned\Unturned_Data\Managed\mscorlib.dll", ModuleDef.CreateModuleContext()));
-
-            foreach (GenNamespace genNamespace in module.BaseNamespaces)
+            // Loop files in directory
+            List<ModuleDef> modules = new List<ModuleDef>();
+            foreach (var file in System.IO.Directory.GetFiles(@"F:\Steam\steamapps\common\Unturned\Unturned_Data\Managed\", "*.dll"))
             {
-                int indent = 0;
-                PrintNamespaces(genNamespace, indent);
+                // Load module
+                ModuleDef moduleDef = ModuleDefMD.Load(file, ModuleDef.CreateModuleContext());
+                modules.Add(moduleDef);
             }
+
+            Generator generator = new Generator(modules.ToArray());
 
             Console.ReadLine();
-        }
-
-        static void PrintNamespaces(GenNamespace genNamespace, int indent)
-        {
-            Console.WriteLine(new string(' ', indent * 2) + genNamespace.FullName);
-
-            foreach (var childNamespace in genNamespace.Namespaces)
-            {
-                PrintNamespaces(childNamespace, indent + 1);
-            }
         }
     }
 }

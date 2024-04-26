@@ -4,16 +4,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UnityObserver.Utils;
 
 namespace UnityObserver.Data
 {
-    internal class GenModule
+    internal class GenModule : IGeneratable
     {
-        public ModuleDef ModuleDef { get; private set; }
-        public List<GenNamespace> BaseNamespaces { get; private set; }
-        public GenModule(ModuleDef moduleDef)
+        public GenModule(Generator generator, ModuleDef moduleDef)
         {
             ModuleDef = moduleDef;
+            Generator = generator;
 
             BaseNamespaces = new List<GenNamespace>();
 
@@ -46,5 +46,14 @@ namespace UnityObserver.Data
             // Convert the set to a list and return
             return baseNamespaces.ToList();
         }
+
+        public void Generate()
+        {
+            throw new NotImplementedException();
+        }
+
+        public ModuleDef ModuleDef { get; private set; }
+        public Generator Generator { get; private set; }
+        public List<GenNamespace> BaseNamespaces { get; private set; }
     }
 }

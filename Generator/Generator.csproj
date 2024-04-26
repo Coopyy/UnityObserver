@@ -46,14 +46,19 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Data\GenEnum.cs" />
     <Compile Include="Data\GenMethod.cs" />
     <Compile Include="Data\GenClass.cs" />
     <Compile Include="Data\GenField.cs" />
     <Compile Include="Data\GenModule.cs" />
     <Compile Include="Data\GenNamespace.cs" />
+    <Compile Include="Data\GenStruct.cs" />
+    <Compile Include="IGeneratable.cs" />
     <Compile Include="Generator.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Utils\Logger.cs" />
+    <Compile Include="Utils\Writer.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

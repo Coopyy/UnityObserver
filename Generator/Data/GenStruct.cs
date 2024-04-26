@@ -1,4 +1,5 @@
-﻿using System;
+﻿using dnlib.DotNet;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -6,11 +7,10 @@ using System.Threading.Tasks;
 
 namespace UnityObserver.Data
 {
-    internal class GenMethod : IGeneratable
+    internal class GenStruct : GenClass
     {
-        public void Generate()
+        public GenStruct(GenNamespace gnamespace, TypeDef type) : base(gnamespace, type)
         {
-            throw new NotImplementedException();
         }
     }
 }
