@@ -1,6 +1,7 @@
 ﻿using dnlib.DotNet;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -87,7 +88,7 @@ namespace UnityObserver.Data
             return childNamespaces.ToList();
         }
 
-        public void Generate()
+        public void Generate(Writer.WriteContext context)
         {
             throw new NotImplementedException();
         }

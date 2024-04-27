@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UnityObserver.Utils;
 
 namespace UnityObserver.Data
 {
@@ -13,9 +14,9 @@ namespace UnityObserver.Data
         {
         }
 
-        public override void Generate()
+        public override void Generate(Writer.WriteContext context)
         {
-            base.Generate();
+            base.Generate(TODO);
         }
     }
 }

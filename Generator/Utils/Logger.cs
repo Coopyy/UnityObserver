@@ -13,7 +13,7 @@ namespace UnityObserver.Utils
         Success,
         Error
     }
-    internal class Logger
+    internal static class Logger
     {
         public static void Log(LogType type, string message)
         {

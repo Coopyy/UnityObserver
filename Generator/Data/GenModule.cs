@@ -47,7 +47,7 @@ namespace UnityObserver.Data
             return baseNamespaces.ToList();
         }
 
-        public void Generate()
+        public void Generate(Writer.WriteContext context)
         {
             throw new NotImplementedException();
         }

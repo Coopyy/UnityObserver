@@ -9,7 +9,7 @@ using UnityObserver.Utils;
 
 namespace UnityObserver
 {
-    internal class Generator : IGeneratable
+    internal class Generator
     {
         public Generator(ModuleDef[] modules)
         {
@@ -21,7 +21,10 @@ namespace UnityObserver
         }
         public void Generate()
         {
-
+            foreach (var module in GenModules)
+            {
+                module.Generate();
+            }
         }
 
         public List<GenModule> GenModules { get; } = new List<GenModule>();

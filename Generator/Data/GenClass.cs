@@ -1,6 +1,7 @@
 ﻿using dnlib.DotNet;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -22,7 +23,7 @@ namespace UnityObserver.Data
         public bool IsValueType => TypeDef.IsValueType;
         public bool IsEnum => TypeDef.IsEnum;
         public bool IsClass => TypeDef.IsClass || TypeDef.IsInterface;
-        public virtual void Generate()
+        public virtual void Generate(Writer.WriteContext context)
         {
             throw new NotImplementedException();
         }
