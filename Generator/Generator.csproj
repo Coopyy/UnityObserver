@@ -50,7 +50,6 @@
     <Compile Include="Data\GenMethod.cs" />
     <Compile Include="Data\GenClass.cs" />
     <Compile Include="Data\GenField.cs" />
-    <Compile Include="Data\GenModule.cs" />
     <Compile Include="Data\GenNamespace.cs" />
     <Compile Include="Data\GenStruct.cs" />
     <Compile Include="IGeneratable.cs" />

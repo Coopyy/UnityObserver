@@ -16,7 +16,6 @@ namespace UnityObserver.Data
 
         public override void Generate(Writer.WriteContext context)
         {
-            base.Generate(TODO);
         }
     }
 }
