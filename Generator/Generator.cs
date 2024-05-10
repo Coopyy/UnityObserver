@@ -60,7 +60,12 @@ namespace UnityObserver
         }
         public void Generate()
         {
-           
+            foreach (var ns in _namespaceMap.Values)
+            {
+                Writer.WriteContext context = Writer.CreateContext(ns.FileName);
+                ns.Generate(context);
+                context.Write();
+            }
         }
 
         public List<ModuleDef> ModuleDefs { get; } = new List<ModuleDef>();

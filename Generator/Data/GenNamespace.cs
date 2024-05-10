@@ -22,11 +22,27 @@ namespace UnityObserver.Data
 
         public void Generate(Writer.WriteContext context)
         {
-            throw new NotImplementedException();
+            context.Append($"#ifndef {FullName.ToUpper()}_H");
+            context.Append($"#define {FullName.ToUpper()}_H");
+            context.NewLine();
+
+            foreach (var genClass in Classes)
+            {
+                context.Append($"#include \"{genClass.FilePath}\"");
+
+                Writer.WriteContext classContext = Writer.CreateContext(genClass.FilePath);
+                genClass.Generate(classContext);
+                classContext.Write();
+            }
+
+            context.NewLine();
+            context.Append("#endif");
         }
 
         public string FullName { get; private set; }
         public string Name => FullName.Split('.').Last();
+        public string FilePath => String.IsNullOrEmpty(FullName) ? "-" : FullName.Replace('.', '/');
+        public string FileName => FilePath.Replace('.', '_') + ".h";
         public List<GenClass> Classes { get; private set; }
         public Generator Generator { get; private set; }
     }

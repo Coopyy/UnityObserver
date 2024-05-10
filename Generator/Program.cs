@@ -22,6 +22,7 @@ namespace UnityObserver
             }
 
             Generator generator = new Generator(modules.ToArray());
+            generator.Generate();
 
             Console.ReadLine();
         }
