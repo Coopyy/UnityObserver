@@ -1,23 +1,21 @@
-﻿using dnlib.DotNet;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection.Emit;
-using System.Text;
-using System.Threading.Tasks;
 using UnityObserver.Utils;
 
 namespace UnityObserver.Data
 {
     internal class GenNamespace : IGeneratable
     {
-        public GenNamespace(Generator generator, string name)
+        public GenNamespace(Generator generator, string fullName)
         {
-            FullName = name;
-            Generator = generator;
+            FullName = String.IsNullOrEmpty(fullName) ? "-" : fullName;
+            FilePath = FullName.Replace('.', '/');
+            FileName = FilePath.Replace('/', '_') + ".h";
+            Name = FullName.Substring(FullName.LastIndexOf('.') + 1);
 
-            Classes = new List<GenClass>();
+            Generator = generator;
         }
 
         public void Generate(Writer.WriteContext context)
@@ -39,11 +37,11 @@ namespace UnityObserver.Data
             context.Append("#endif");
         }
 
-        public string FullName { get; private set; }
-        public string Name => FullName.Split('.').Last();
-        public string FilePath => String.IsNullOrEmpty(FullName) ? "-" : FullName.Replace('.', '/');
-        public string FileName => (String.IsNullOrEmpty(FullName) ? "-" : FullName.Replace('.', '_')) + ".h";
-        public List<GenClass> Classes { get; private set; }
-        public Generator Generator { get; private set; }
+        public string FullName { get; }
+        public string Name { get; }
+        public string FilePath { get; }
+        public string FileName { get; }
+        public List<GenClass> Classes { get; } = new List<GenClass>();
+        public Generator Generator { get; }
     }
 }
