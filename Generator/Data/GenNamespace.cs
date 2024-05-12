@@ -42,7 +42,7 @@ namespace UnityObserver.Data
         public string FullName { get; private set; }
         public string Name => FullName.Split('.').Last();
         public string FilePath => String.IsNullOrEmpty(FullName) ? "-" : FullName.Replace('.', '/');
-        public string FileName => FilePath.Replace('.', '_') + ".h";
+        public string FileName => (String.IsNullOrEmpty(FullName) ? "-" : FullName.Replace('.', '_')) + ".h";
         public List<GenClass> Classes { get; private set; }
         public Generator Generator { get; private set; }
     }
