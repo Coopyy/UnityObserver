@@ -11,6 +11,7 @@ namespace UnityObserver.Data
     {
         public GenStruct(GenNamespace gnamespace, TypeDef type) : base(gnamespace, type)
         {
+            
         }
     }
 }
