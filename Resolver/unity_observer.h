@@ -12,14 +12,27 @@
 #define MONO RUNTIME == 0
 #define IL2CPP RUNTIME == 1
 
-#define STRINGIFY(x) #x
+#ifdef _WIN64
+#define CALLING_CONVENTION __fastcall
+#elif _WIN32
+#define CALLING_CONVENTION __cdecl
+#endif
+
 #if MONO
-#define RUNTIME_EXPORT_NAME(name) STRINGIFY(mono_##name)
 #define RUNTIME_DLL "mono-2.0-bdwgc.dll"
 #elif IL2CPP
-#define RUNTIME_EXPORT_NAME(name) STRINGIFY(il2cpp_##name)
 #define RUNTIME_DLL "GameAssembly.dll"
 #endif
+
+#define THIS reinterpret_cast<uintptr_t>(this)
+#define STRINGIFY(x) #x
+#define RUNTIME_EXPORT_FUNC(name, export_name, type, ...) \
+	typedef type(CALLING_CONVENTION* t_##name)(__VA_ARGS__); \
+	static t_##name Export_##name = nullptr; \
+	if (!Export_##name) { \
+		auto mod = Memory::GetModule(RUNTIME_DLL); \
+		Export_##name = mod.GetExport<t_##name>(STRINGIFY(export_name)); \
+	}
 
 namespace Logger {
 	inline void Setup() {
@@ -37,6 +50,14 @@ namespace Logger {
 	}
 
 	inline void Log(const char* fmt, ...) {
+		va_list args;
+		va_start(args, fmt);
+		vprintf(fmt, args);
+		va_end(args);
+	}
+
+	inline void LogError(const char* fmt, ...) {
+		printf("[!] ");
 		va_list args;
 		va_start(args, fmt);
 		vprintf(fmt, args);
@@ -68,6 +89,11 @@ namespace Memory {
 			}
 
 			uintptr_t address = (uintptr_t)GetProcAddress((HMODULE)_base, name.c_str());
+			if (address == 0) {
+				Logger::LogError("Failed to get export: %s\n", name.c_str());
+				return nullptr;
+			}
+
 			_exports[name] = address;
 			return reinterpret_cast<T>(address);
 		}
@@ -90,21 +116,227 @@ namespace Memory {
 		}
 
 		Module mod((uintptr_t)GetModuleHandleA(name.c_str()));
+		if (mod.GetBase() == 0) {
+			Logger::LogError("Failed to get module: %s\n", name.c_str());
+			return {};
+		}
+
 		_modules[name] = mod;
 		return mod;
 	}
 }
 
+namespace Types {
+	class Object;
+}
+
 namespace Runtime {
-	// Forward declarations
+	using namespace Types;
+
 	class Domain;
+	class Assembly;
+	class Image;
+	class Class;
+	class Method;
+	class Field;
+	class Type;
+	class VTable;
 
-
-	// Implementations
-	class Domain {
-	private:
-
+	class VTable {
 	public:
-		
+		inline Class* GetClass() {
+			return Memory::Read<Class*>(THIS);
+		}
+	};
+
+	class Assembly {
+		inline Image* GetImage() {
+#if MONO
+			RUNTIME_EXPORT_FUNC(AssemblyGetImage, mono_assembly_get_image, Image*, Assembly*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(AssemblyGetImage, il2cpp_assembly_get_image, Image*, Assembly*);
+#endif
+			return Export_AssemblyGetImage(this);
+		}
+	public:
+		inline const char* GetName() {
+#if MONO
+			RUNTIME_EXPORT_FUNC(AssemblyGetName, mono_assembly_get_name, uintptr_t, Assembly*);
+
+			auto _assemblyNamePtr = Export_AssemblyGetName(this);
+			if (!_assemblyNamePtr) {
+				return nullptr;
+			}
+			return Memory::Read<const char*>(_assemblyNamePtr);
+
+#elif IL2CPP
+
+			RUNTIME_EXPORT_FUNC(ImageGetName, il2cpp_image_get_name, const char*, Image*);
+
+			return Export_ImageGetName(GetImage());
+#endif
+		}
+
+		inline Class* GetClass(const char* nameSpace, const char* name) {
+			auto image = GetImage();
+			if (!image) {
+				return nullptr;
+			}
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(ImageGetClass, mono_class_from_name, Class*, Image*, const char*, const char*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(ImageGetClass, il2cpp_class_from_name, Class*, Image*, const char*, const char*);
+#endif
+
+			return Export_ImageGetClass(image, nameSpace, name);
+		}
+	};
+
+	class Domain {
+	public:
+
+		static Domain* GetRootDomain() {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(GetDomain, mono_get_root_domain, Domain*);
+			RUNTIME_EXPORT_FUNC(ThreadAttach, mono_thread_attach, void, Domain*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(GetDomain, il2cpp_domain_get, Domain*);
+			RUNTIME_EXPORT_FUNC(ThreadAttach, il2cpp_thread_attach, void, Domain*);
+#endif
+
+			static Domain* rootDomain = nullptr;
+			if (!rootDomain) {
+
+				rootDomain = Export_GetDomain();
+				Export_ThreadAttach(rootDomain);
+				Logger::Log("UnityObserver initialized with Root Domain: %p\n", rootDomain);
+			}
+
+			return rootDomain;
+		}
+
+
+		inline std::vector <Assembly*> GetAssemblies() {
+			std::vector<Assembly*> assemblies;
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(DomainAssemblyForeach, mono_domain_assembly_foreach, void, Domain*, void(__fastcall * func)(void*, void*), void*);
+
+			static auto callback = [](void* assembly, void* user_data) {
+				auto assemblies = reinterpret_cast<std::vector<Assembly*>*>(user_data);
+				assemblies->push_back(reinterpret_cast<Assembly*>(assembly));
+				};
+
+			Export_DomainAssemblyForeach(this, callback, &assemblies);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(DomainGetAssemblies, il2cpp_domain_get_assemblies, Assembly**, Domain*, size_t*);
+
+			size_t size;
+			auto _assemblies = DomainGetAssemblies(this, &size);
+			for (size_t i = 0; i < size; i++)
+				assemblies.push_back(_assemblies[i]);
+#endif
+
+			return assemblies;
+		}
+
+		inline Assembly* GetAssembly(const char* name) {
+			static std::unordered_map<std::string, Assembly*> _assemblies;
+			if (_assemblies.find(name) != _assemblies.end()) {
+				return _assemblies[name];
+			}
+
+			for (const auto assembly : GetAssemblies()) {
+				if (strcmp(assembly->GetName(), name) == 0) {
+					_assemblies[name] = assembly;
+					return assembly;
+				}
+			}
+
+			return nullptr;
+		}
+	};
+
+	class Type {
+	public:
+		inline Object* GetSystemType() {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(TypeGetSystemType, mono_type_get_object, Object*, Domain*, Type*);
+			return Export_TypeGetSystemType(Domain::GetRootDomain(), this);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(TypeGetSystemType, il2cpp_type_get_object, Object*, Type*);
+			return Export_TypeGetSystemType(this);
+#endif
+		}
+	};
+
+	class Class {
+	public:
+		inline Object* New() {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(ObjectNew, mono_object_new, Object*, Domain*, Class*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(ObjectNew, il2cpp_object_new, Object*, Domain*, Class*);
+#endif
+			return Export_ObjectNew(Domain::GetRootDomain(), this);
+		}
+
+		inline Type* GetType() {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(ClassGetType, mono_class_get_type, Type*, Class*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(ClassGetType, il2cpp_class_get_type, Type*, Class*);
+#endif
+
+			return Export_ClassGetType(this);
+		}
+
+		inline Object* Box(uintptr_t address) {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(Box, mono_value_box, Object*, Domain*, Class*, void*);
+			Export_Box(Domain::GetRootDomain(), this, (void*)address);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(Box, il2cpp_value_box, Object*, Class*, void*);
+			Export_Box(this, (void*)address);
+#endif
+		}
+	};
+}
+
+namespace Types {
+	class Object {
+	public:
+		// TODO: maybe differentiate value type and reference type base objects
+		// value types dont have vtable fields and virtual methods are called differently
+		inline Runtime::VTable* GetVTable() {
+			return Memory::Read<Runtime::VTable*>(THIS);
+		}
+
+		// TODO: Look into how calling Object virts work for value types? 
+		// Maybe call corlibs GetType() method instead of this, but not sure on what for value types
+		inline Object* GetType() {
+			auto vtable = GetVTable();
+			if (!vtable) {
+				return nullptr;
+			}
+
+			auto klass = vtable->GetClass();
+			if (!klass) {
+				return nullptr;
+			}
+
+			auto type = klass->GetType();
+			if (!type) {
+				return nullptr;
+			}
+
+			return type->GetSystemType();
+		}
 	};
 }

@@ -4,13 +4,26 @@ DWORD Main(LPVOID lpParam) {
 
 	Logger::Setup();
 
-	// Tests
-	auto mod = Memory::GetModule("mono-2.0-bdwgc.dll");
-	auto base = mod.GetBase();
-	Logger::Log("mono-2.0-bdwgc.dll: 0x%p\n", base);
+	Logger::Log("Root domain: %p\n", Runtime::Domain::GetRootDomain());
 
-	auto mono_get_root_domain = mod.GetExport<uintptr_t(__cdecl*)()>("mono_get_root_domain");
-	Logger::Log("mono_get_root_domain: 0x%p\n", mono_get_root_domain());
+	auto assembly = Runtime::Domain::GetRootDomain()->GetAssembly("Assembly-CSharp");
+	Logger::Log("Assembly-CSharp: 0x%p\n", assembly);
+
+	auto player = assembly->GetClass("SDG.Unturned", "Player");
+	Logger::Log("Player Class: 0x%p\n", player);
+
+	auto playerType = player->GetType();
+	Logger::Log("Player Type: 0x%p\n", playerType);
+
+	auto playerSystemType = playerType->GetSystemType();
+	Logger::Log("Player System Type: 0x%p\n", playerSystemType);
+
+	const auto assemblies = Runtime::Domain::GetRootDomain()->GetAssemblies();
+	Logger::Log("Found %d assemblies\n", assemblies.size());
+
+	for (const auto assembly : assemblies) {
+		Logger::Log("Assembly: %s\n", assembly->GetName());
+	}
 
 	while (!GetAsyncKeyState(VK_END)) Sleep(1000);
 
