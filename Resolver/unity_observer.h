@@ -128,6 +128,9 @@ namespace Memory {
 
 namespace Types {
 	class Object;
+
+	template <typename T>
+	class BoxedValue;
 }
 
 namespace Runtime {
@@ -296,20 +299,33 @@ namespace Runtime {
 			return Export_ClassGetType(this);
 		}
 
-		inline Object* Box(uintptr_t address) {
+		template <typename T>
+		inline BoxedValue<T>* Box(T* address) {
 
 #if MONO
-			RUNTIME_EXPORT_FUNC(Box, mono_value_box, Object*, Domain*, Class*, void*);
-			Export_Box(Domain::GetRootDomain(), this, (void*)address);
+			RUNTIME_EXPORT_FUNC(Box, mono_value_box, BoxedValue<T>*, Domain*, Class*, void*);
+			return Export_Box(Domain::GetRootDomain(), this, address);
 #elif IL2CPP
-			RUNTIME_EXPORT_FUNC(Box, il2cpp_value_box, Object*, Class*, void*);
-			Export_Box(this, (void*)address);
+			RUNTIME_EXPORT_FUNC(Box, il2cpp_value_box, BoxedValue<T>*, Class*, void*);
+			return Export_Box(this, address);
+#endif
+		}
+
+		inline bool IsSubclassOf(Class* parent) {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(IsSubclass, mono_class_is_subclass_of, bool, Class*, Class*, bool);
+			return Export_IsSubclass(this, parent, true);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(IsSubclassOf, il2cpp_class_is_subclass_of, bool, Class*, Class*, bool);
+			return Export_IsSubclass(this, parent, true);
 #endif
 		}
 	};
 }
 
 namespace Types {
+
 	class Object {
 	public:
 		// TODO: maybe differentiate value type and reference type base objects
@@ -337,6 +353,46 @@ namespace Types {
 			}
 
 			return type->GetSystemType();
+		}
+
+		inline bool IsInstanceOf(Runtime::Class* klass) {
+			auto vtable = GetVTable();
+			if (!vtable) {
+				return false;
+			}
+
+			auto curClass = vtable->GetClass();
+			if (!curClass) {
+				return false;
+			}
+
+			if (curClass == klass) {
+				return true;
+			}
+
+			return curClass->IsSubclassOf(klass);
+		}
+
+		template <typename T>
+		inline T* As() {
+			if (!IsInstanceOf(T::StaticClass())) {
+				return nullptr;
+			}
+
+			return reinterpret_cast<T*>(this);
+		}
+	};
+
+	template <typename T>
+	class BoxedValue : public Object {
+	public:
+		inline T Unbox() {
+#if MONO
+			RUNTIME_EXPORT_FUNC(Unbox, mono_object_unbox, T, Object*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(Unbox, il2cpp_object_unbox, T, Object*);
+#endif
+			return Export_Unbox(this);
 		}
 	};
 }

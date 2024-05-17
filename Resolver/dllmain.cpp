@@ -9,23 +9,7 @@ DWORD Main(LPVOID lpParam) {
 	auto assembly = Runtime::Domain::GetRootDomain()->GetAssembly("Assembly-CSharp");
 	Logger::Log("Assembly-CSharp: 0x%p\n", assembly);
 
-	auto player = assembly->GetClass("SDG.Unturned", "Player");
-	Logger::Log("Player Class: 0x%p\n", player);
-
-	auto playerType = player->GetType();
-	Logger::Log("Player Type: 0x%p\n", playerType);
-
-	auto playerSystemType = playerType->GetSystemType();
-	Logger::Log("Player System Type: 0x%p\n", playerSystemType);
-
-	const auto assemblies = Runtime::Domain::GetRootDomain()->GetAssemblies();
-	Logger::Log("Found %d assemblies\n", assemblies.size());
-
-	for (const auto assembly : assemblies) {
-		Logger::Log("Assembly: %s\n", assembly->GetName());
-	}
-
-	while (!GetAsyncKeyState(VK_END)) Sleep(1000);
+	while (!GetAsyncKeyState(VK_END)) Sleep(100);
 
 	Logger::Cleanup();
 
