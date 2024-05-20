@@ -144,7 +144,6 @@ namespace Runtime {
 	class Field;
 	class Type;
 	class VTable;
-	class StaticData;
 
 	class Method {
 	public:
@@ -208,8 +207,6 @@ namespace Runtime {
 			_offsets[this] = offset;
 			return offset;
 		}
-
-
 
 		template <typename T>
 		inline T Get(Object* instance) {
@@ -494,8 +491,6 @@ namespace Runtime {
 					}
 				}
 			}
-
-			//mono_class_get_methods
 
 #if MONO
 			RUNTIME_EXPORT_FUNC(GetMethod, mono_class_get_methods, Method*, Class*, uintptr_t*);
