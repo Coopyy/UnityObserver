@@ -22,6 +22,18 @@ DWORD Main(LPVOID lpParam) {
 	auto netId = GetNetId->Invoke<Types::BoxedValue<netID>*>(plr);
 	Logger::Log("NetId: %p\n", netId);
 
+	auto newString = Types::String::New("Hello, World!");
+	auto newObject = Types::Object::New();
+
+	Logger::Log("String is Object: %d\n", newString->IsInstanceOf(Types::Object::StaticRuntimeClass()));
+	Logger::Log("Object is String: %d\n", newObject->IsInstanceOf(Types::String::StaticRuntimeClass()));
+
+	auto stringToObject = newString->As<Types::Object>();
+	auto objectToString = newObject->As<Types::String>();
+
+	Logger::Log("String to Object cast: %p\n", stringToObject); // string derives from object, good
+	Logger::Log("Object to String cast: %p\n", objectToString); // null because cant cast object to string
+
 	while (!GetAsyncKeyState(VK_END)) Sleep(100);
 
 	Logger::Cleanup();

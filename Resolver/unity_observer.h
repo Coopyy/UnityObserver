@@ -22,6 +22,8 @@
 #define RUNTIME_DLL "mono-2.0-bdwgc.dll"
 #elif IL2CPP
 #define RUNTIME_DLL "GameAssembly.dll"
+#else
+#error "Invalid Runtime"
 #endif
 
 #define THIS reinterpret_cast<uintptr_t>(this)
@@ -422,6 +424,17 @@ namespace Runtime {
 			return Export_ObjectNew(Domain::GetRootDomain(), this);
 		}
 
+		inline const char* GetName() {
+
+			#if MONO
+			RUNTIME_EXPORT_FUNC(ClassGetName, mono_class_get_name, const char*, Class*);
+			#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(ClassGetName, il2cpp_class_get_name, const char*, Class*);
+			#endif
+
+			return Export_ClassGetName(this);
+		}
+
 		inline Type* GetType() {
 
 #if MONO
@@ -545,21 +558,47 @@ namespace Types {
 
 	class Object {
 	public:
-		// TODO: maybe differentiate value type and reference type base objects
-		// value types dont have vtable fields and virtual methods are called differently
-		inline Runtime::VTable* GetVTable() {
-			return Memory::Read<Runtime::VTable*>(THIS);
+		static Runtime::Class* StaticRuntimeClass() {
+			static Runtime::Class* _class = nullptr;
+			if (_class) {
+				return _class;
+			}
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(GetObjectClass, mono_get_object_class, Runtime::Class*);
+			_class = Export_GetObjectClass();
+#elif IL2CPP
+			static Runtime::Class* obj = nullptr;
+			if (!obj) {
+				auto domain = Runtime::Domain::GetRootDomain();
+				auto assembly = domain->GetAssembly("mscorlib");
+				obj = assembly->GetClass("System", "Object");
+			}
+			_class = obj;
+#endif
+			return _class;
 		}
 
-		// TODO: Look into how calling Object virts work for value types? 
-		// Maybe call corlibs GetType() method instead of this, but not sure on what for value types
-		inline Object* GetType() {
-			auto vtable = GetVTable();
+		static Object* New() {
+			auto klass = StaticRuntimeClass();
+			if (!klass) {
+				return nullptr;
+			}
+
+			return klass->New();
+		}
+
+		inline Runtime::Class* RuntimeClass() {
+			auto vtable = Memory::Read<Runtime::VTable*>(THIS);
 			if (!vtable) {
 				return nullptr;
 			}
 
-			auto klass = vtable->GetClass();
+			return vtable->GetClass();
+		}
+
+		inline Object* GetType() {
+			auto klass = RuntimeClass();
 			if (!klass) {
 				return nullptr;
 			}
@@ -573,12 +612,7 @@ namespace Types {
 		}
 
 		inline bool IsInstanceOf(Runtime::Class* klass) {
-			auto vtable = GetVTable();
-			if (!vtable) {
-				return false;
-			}
-
-			auto curClass = vtable->GetClass();
+			auto curClass = RuntimeClass();
 			if (!curClass) {
 				return false;
 			}
@@ -592,7 +626,7 @@ namespace Types {
 
 		template <typename T>
 		inline T* As() {
-			if (!IsInstanceOf(T::StaticClass())) {
+			if (!IsInstanceOf(T::StaticRuntimeClass())) {
 				return nullptr;
 			}
 
@@ -601,12 +635,7 @@ namespace Types {
 
 		template <typename T>
 		inline void SetFieldValue(const char* name, T value) {
-			auto vtable = GetVTable();
-			if (!vtable) {
-				return;
-			}
-
-			auto klass = vtable->GetClass();
+			auto klass = RuntimeClass();
 			if (!klass) {
 				return;
 			}
@@ -616,12 +645,7 @@ namespace Types {
 
 		template <typename T>
 		inline T GetFieldValue(const char* name) {
-			auto vtable = GetVTable();
-			if (!vtable) {
-				return T();
-			}
-
-			auto klass = vtable->GetClass();
+			auto klass = RuntimeClass();
 			if (!klass) {
 				return T();
 			}
@@ -640,6 +664,78 @@ namespace Types {
 			RUNTIME_EXPORT_FUNC(Unbox, il2cpp_object_unbox, T, Object*);
 #endif
 			return Export_Unbox(this);
+		}
+	};
+
+	class String : public Object {
+	public:
+		static Runtime::Class* StaticRuntimeClass() {
+			static Runtime::Class* _class = nullptr;
+			if (_class) {
+				return _class;
+			}
+
+			static Runtime::Class* obj = nullptr;
+			if (!obj) {
+				auto domain = Runtime::Domain::GetRootDomain();
+				auto assembly = domain->GetAssembly("mscorlib");
+				obj = assembly->GetClass("System", "String");
+			}
+			_class = obj;
+		}
+
+		static String* New(const char* str) {
+#if MONO
+			RUNTIME_EXPORT_FUNC(StringNew, mono_string_new, String*, Runtime::Domain*, const char*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(StringNew, il2cpp_string_new, String*, const char*);
+#endif
+
+			return Export_StringNew(Runtime::Domain::GetRootDomain(), str);
+		}
+
+		inline const wchar_t* ToWString() {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(StringGetChars, mono_string_chars, const wchar_t*, String*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(StringGetChars, il2cpp_string_chars, const wchar_t*, String*);
+#endif
+
+			return Export_StringGetChars(this);
+		}
+
+		inline int GetLength() {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(StringGetLength, mono_string_length, int, String*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(StringGetLength, il2cpp_string_length, int, String*);
+#endif
+
+			return Export_StringGetLength(this);
+		}
+
+		inline std::string ToString() {
+			auto length = GetLength();
+			auto chars = ToWString();
+			std::string str;
+			for (int i = 0; i < length; i++) {
+				str += static_cast<char>(chars[i]);
+			}
+			return str;
+		}
+
+		inline bool operator==(const char* str) {
+			return strcmp(ToString().c_str(), str) == 0;
+		}
+
+		inline bool operator==(const std::string& str) {
+			return ToString() == str;
+		}
+
+		inline bool operator==(String* str) {
+			return ToString() == str->ToString();
 		}
 	};
 }
