@@ -88,7 +88,7 @@ namespace Memory {
 				return reinterpret_cast<T>(_exports[name]);
 			}
 
-			uintptr_t address = (uintptr_t)GetProcAddress((HMODULE)_base, name.c_str());
+			uintptr_t address = (uintptr_t)GetProcAddress((HMODULE)_base, name.c_str());  // Note: Can change to getting export with export table
 			if (address == 0) {
 				Logger::LogError("Failed to get export: %s\n", name.c_str());
 				return nullptr;
@@ -115,7 +115,7 @@ namespace Memory {
 			return _modules[name];
 		}
 
-		Module mod((uintptr_t)GetModuleHandleA(name.c_str()));
+		Module mod((uintptr_t)GetModuleHandleA(name.c_str()));  // Note: Can change to getting base with PEB
 		if (mod.GetBase() == 0) {
 			Logger::LogError("Failed to get module: %s\n", name.c_str());
 			return {};
@@ -144,6 +144,124 @@ namespace Runtime {
 	class Field;
 	class Type;
 	class VTable;
+	class StaticData;
+
+	class Method {
+	public:
+		inline const char* GetName() {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(MethodGetName, mono_method_get_name, const char*, Method*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(MethodGetName, il2cpp_method_get_name, const char*, Method*);
+#endif
+
+			return Export_MethodGetName(this);
+		}
+
+		template <typename T = void, typename... Args>
+		inline T Invoke(Object* instance, Args... args) {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(MethodInvoke, mono_runtime_invoke, T, Method*, Object*, void**, void**);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(MethodInvoke, il2cpp_runtime_invoke, T, Method*, Object*, void**, void**);
+#endif
+
+			if constexpr (sizeof...(Args) > 0) {
+				void* params[] = { &args... };
+				return Export_MethodInvoke(this, instance, params, nullptr);
+			}
+			else
+				return Export_MethodInvoke(this, instance, nullptr, nullptr);
+		}
+	};
+
+	class Field {
+	public:
+
+		inline const char* GetName() {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(FieldGetName, mono_field_get_name, const char*, Field*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(FieldGetName, il2cpp_field_get_name, const char*, Field*);
+
+#endif
+
+			return Export_FieldGetName(this);
+		}
+
+		inline uintptr_t GetOffset() {
+			static std::unordered_map<Field*, uintptr_t> _offsets;
+			if (_offsets.find(this) != _offsets.end()) {
+				return _offsets[this];
+			}
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(FieldGetOffset, mono_field_get_offset, uintptr_t, Field*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(FieldGetOffset, il2cpp_field_get_offset, uintptr_t, Field*);
+#endif
+
+			auto offset = Export_FieldGetOffset(this);
+			_offsets[this] = offset;
+			return offset;
+		}
+
+
+
+		template <typename T>
+		inline T Get(Object* instance) {
+			T value;
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(FieldGetValue, mono_field_get_value, void, Object*, Field*, void*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(FieldGetValue, il2cpp_field_get_value, void, Object*, Field*, void*);
+#endif
+			Export_FieldGetValue(instance, this, &value);
+			return value;
+		}
+
+		template <typename T>
+		inline void Set(Object* instance, T& value) {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(FieldSetValue, mono_field_set_value, void, Object*, Field*, void*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(FieldSetValue, il2cpp_field_set_value, void, Object*, Field*, void*);
+#endif
+			Export_FieldSetValue(instance, this, &value);
+		}
+
+		template <typename T>
+		inline T Get(VTable* instance) {
+			T value;
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(FieldGetStaticValue, mono_field_static_get_value, void, VTable*, Field*, void*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(FieldGetStaticValue, il2cpp_field_static_get_value, void, VTable*, Field*, void*);
+#endif
+
+			Export_FieldGetStaticValue(instance, this, &value);
+			return value;
+		}
+
+		template <typename T>
+		inline void Set(VTable* instance, T value) {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(FieldSetStaticValue, mono_field_static_set_value, void, VTable*, Field*, void*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(FieldSetStaticValue, il2cpp_field_static_set_value, void, VTable*, Field*, void*);
+#endif
+
+			Export_FieldSetStaticValue(instance, this, &value);
+
+		}
+	};
 
 	class VTable {
 	public:
@@ -204,6 +322,7 @@ namespace Runtime {
 #if MONO
 			RUNTIME_EXPORT_FUNC(GetDomain, mono_get_root_domain, Domain*);
 			RUNTIME_EXPORT_FUNC(ThreadAttach, mono_thread_attach, void, Domain*);
+			RUNTIME_EXPORT_FUNC(JITThreadAttach, mono_jit_thread_attach, void, Domain*);
 #elif IL2CPP
 			RUNTIME_EXPORT_FUNC(GetDomain, il2cpp_domain_get, Domain*);
 			RUNTIME_EXPORT_FUNC(ThreadAttach, il2cpp_thread_attach, void, Domain*);
@@ -214,6 +333,9 @@ namespace Runtime {
 
 				rootDomain = Export_GetDomain();
 				Export_ThreadAttach(rootDomain);
+#if MONO
+				Export_JITThreadAttach(rootDomain);
+#endif
 				Logger::Log("UnityObserver initialized with Root Domain: %p\n", rootDomain);
 			}
 
@@ -252,8 +374,9 @@ namespace Runtime {
 			}
 
 			for (const auto assembly : GetAssemblies()) {
-				if (strcmp(assembly->GetName(), name) == 0) {
-					_assemblies[name] = assembly;
+				auto assemblyName = assembly->GetName();
+				_assemblies[assemblyName] = assembly;
+				if (strcmp(assemblyName, name) == 0) {
 					return assembly;
 				}
 			}
@@ -277,6 +400,20 @@ namespace Runtime {
 	};
 
 	class Class {
+		inline VTable* GetVTable() {
+			static std::unordered_map<Class*, VTable*> _vtables;
+			if (_vtables.find(this) != _vtables.end()) {
+				return _vtables[this];
+			}
+#if MONO
+			RUNTIME_EXPORT_FUNC(GetVTable, mono_class_vtable, VTable*, Domain*, Class*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(GetVTable, il2cpp_class_vtable, VTable*, Domain*, Class*);
+#endif
+			VTable* vtable = Export_GetVTable(Domain::GetRootDomain(), this);
+			_vtables[this] = vtable;
+			return vtable;
+		}
 	public:
 		inline Object* New() {
 
@@ -320,6 +457,91 @@ namespace Runtime {
 			RUNTIME_EXPORT_FUNC(IsSubclassOf, il2cpp_class_is_subclass_of, bool, Class*, Class*, bool);
 			return Export_IsSubclass(this, parent, true);
 #endif
+		}
+
+		inline Field* GetField(const char* name) {
+			static std::unordered_map<Class*, std::unordered_map<std::string, Field*>> _fields;
+			if (_fields.find(this) != _fields.end()) {
+				auto& fields = _fields[this];
+				if (fields.find(name) != fields.end()) {
+					return fields[name];
+				}
+			}
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(GetField, mono_class_get_field_from_name, Field*, Class*, const char*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(GetField, il2cpp_class_get_field_from_name, Field*, Class*, const char*);
+#endif
+
+			Field* field = Export_GetField(this, name);
+			if (field) {
+				_fields[this][name] = field;
+			}
+
+			return field;
+		}
+
+		inline Method* GetMethod(const char* name, int index = 0) {
+			static std::unordered_map<Class*, std::unordered_map<std::string, std::unordered_map<int, Method*>>> _methods;
+
+			if (_methods.find(this) != _methods.end()) {
+				auto& methods = _methods[this];
+				if (methods.find(name) != methods.end()) {
+					auto& overloads = methods[name];
+					if (overloads.find(index) != overloads.end()) {
+						return overloads[index];
+					}
+				}
+			}
+
+			//mono_class_get_methods
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(GetMethod, mono_class_get_methods, Method*, Class*, uintptr_t*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(GetMethod, il2cpp_class_get_methods, Method*, Class*, uintptr_t*);
+#endif
+
+			uintptr_t iter{};
+			int curIndex = index;
+			while (Method* method = Export_GetMethod(this, &iter)) {
+				if (strcmp(method->GetName(), name) == 0) {
+					if (curIndex == 0) {
+						_methods[this][name][index] = method;
+						return method;
+					}
+					curIndex--;
+				}
+			}
+
+			return nullptr;
+		}
+
+		template <typename T>
+		inline void SetFieldValue(const char* name, T value, Object* instance = nullptr) {
+			auto field = GetField(name);
+			if (!field) {
+				return;
+			}
+
+			if (!instance)
+				field->Set(GetVTable(), value);
+			else
+				field->Set(instance, value);
+		}
+
+		template <typename T>
+		inline T GetFieldValue(const char* name, Object* instance = nullptr) {
+			auto field = GetField(name);
+			if (!field) {
+				return T();
+			}
+
+			if (!instance)
+				return field->Get<T>(GetVTable());
+			else
+				return field->Get<T>(instance);
 		}
 	};
 }
@@ -380,6 +602,36 @@ namespace Types {
 			}
 
 			return reinterpret_cast<T*>(this);
+		}
+
+		template <typename T>
+		inline void SetFieldValue(const char* name, T value) {
+			auto vtable = GetVTable();
+			if (!vtable) {
+				return;
+			}
+
+			auto klass = vtable->GetClass();
+			if (!klass) {
+				return;
+			}
+
+			klass->SetFieldValue(name, value, this);
+		}
+
+		template <typename T>
+		inline T GetFieldValue(const char* name) {
+			auto vtable = GetVTable();
+			if (!vtable) {
+				return T();
+			}
+
+			auto klass = vtable->GetClass();
+			if (!klass) {
+				return T();
+			}
+
+			return klass->GetFieldValue<T>(name, this);
 		}
 	};
 

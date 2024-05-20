@@ -6,8 +6,21 @@ DWORD Main(LPVOID lpParam) {
 
 	Logger::Log("Root domain: %p\n", Runtime::Domain::GetRootDomain());
 
-	auto assembly = Runtime::Domain::GetRootDomain()->GetAssembly("Assembly-CSharp");
-	Logger::Log("Assembly-CSharp: 0x%p\n", assembly);
+	auto playerClass = Runtime::Domain::GetRootDomain()->GetAssembly("Assembly-CSharp")->GetClass("SDG.Unturned", "Player");
+
+	auto plr = playerClass->GetFieldValue<Types::Object*>("_player");
+
+	plr->GetFieldValue<Types::Object*>("_life")->SetFieldValue("_health", 100);
+
+	Logger::Log("Player: 0x%p\n", plr);
+
+	auto GetNetId = playerClass->GetMethod("GetNetId");
+    Logger::Log("GetNetId: 0x%p\n", GetNetId);
+	struct netID {
+		unsigned int id;
+	};
+	auto netId = GetNetId->Invoke<Types::BoxedValue<netID>*>(plr);
+	Logger::Log("NetId: %p\n", netId);
 
 	while (!GetAsyncKeyState(VK_END)) Sleep(100);
 
