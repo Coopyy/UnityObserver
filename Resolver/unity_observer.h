@@ -56,6 +56,7 @@ namespace Logger {
 		va_start(args, fmt);
 		vprintf(fmt, args);
 		va_end(args);
+		printf("\n");
 	}
 
 	inline void LogError(const char* fmt, ...) {
@@ -64,6 +65,7 @@ namespace Logger {
 		va_start(args, fmt);
 		vprintf(fmt, args);
 		va_end(args);
+		printf("\n");
 	}
 }
 
@@ -92,7 +94,7 @@ namespace Memory {
 
 			uintptr_t address = (uintptr_t)GetProcAddress((HMODULE)_base, name.c_str());  // Note: Can change to getting export with export table
 			if (address == 0) {
-				Logger::LogError("Failed to get export: %s\n", name.c_str());
+				Logger::LogError("Failed to get export: %s", name.c_str());
 				return nullptr;
 			}
 
@@ -119,7 +121,7 @@ namespace Memory {
 
 		Module mod((uintptr_t)GetModuleHandleA(name.c_str()));  // Note: Can change to getting base with PEB
 		if (mod.GetBase() == 0) {
-			Logger::LogError("Failed to get module: %s\n", name.c_str());
+			Logger::LogError("Failed to get module: %s", name.c_str());
 			return {};
 		}
 
@@ -335,7 +337,7 @@ namespace Runtime {
 #if MONO
 				Export_JITThreadAttach(rootDomain);
 #endif
-				Logger::Log("UnityObserver initialized with Root Domain: %p\n", rootDomain);
+				Logger::Log("UnityObserver initialized with Root Domain: %p", rootDomain);
 			}
 
 			return rootDomain;
@@ -413,6 +415,10 @@ namespace Runtime {
 			_vtables[this] = vtable;
 			return vtable;
 		}
+
+		bool GetBitFieldValue(int index) {
+			return (Memory::Read<unsigned char>(THIS + 0x18) >> index) & 1;
+		}
 	public:
 		inline Object* New() {
 
@@ -426,11 +432,11 @@ namespace Runtime {
 
 		inline const char* GetName() {
 
-			#if MONO
+#if MONO
 			RUNTIME_EXPORT_FUNC(ClassGetName, mono_class_get_name, const char*, Class*);
-			#elif IL2CPP
+#elif IL2CPP
 			RUNTIME_EXPORT_FUNC(ClassGetName, il2cpp_class_get_name, const char*, Class*);
-			#endif
+#endif
 
 			return Export_ClassGetName(this);
 		}
@@ -444,6 +450,17 @@ namespace Runtime {
 #endif
 
 			return Export_ClassGetType(this);
+		}
+
+		inline Class* GetParent() {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(ClassGetParent, mono_class_get_parent, Class*, Class*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(ClassGetParent, il2cpp_class_get_parent, Class*, Class*);
+#endif
+
+			return Export_ClassGetParent(this);
 		}
 
 		template <typename T>
@@ -469,6 +486,10 @@ namespace Runtime {
 #endif
 		}
 
+		inline bool IsValueType() {
+			return GetBitFieldValue(1);
+		}
+
 		inline Field* GetField(const char* name) {
 			static std::unordered_map<Class*, std::unordered_map<std::string, Field*>> _fields;
 			if (_fields.find(this) != _fields.end()) {
@@ -492,7 +513,7 @@ namespace Runtime {
 			return field;
 		}
 
-		inline Method* GetMethod(const char* name, int index = 0) {
+		inline Method* GetMethod(const char* name, int index = 0, bool checkParents = true) {
 			static std::unordered_map<Class*, std::unordered_map<std::string, std::unordered_map<int, Method*>>> _methods;
 
 			if (_methods.find(this) != _methods.end()) {
@@ -510,20 +531,38 @@ namespace Runtime {
 #elif IL2CPP
 			RUNTIME_EXPORT_FUNC(GetMethod, il2cpp_class_get_methods, Method*, Class*, uintptr_t*);
 #endif
-
-			uintptr_t iter{};
-			int curIndex = index;
-			while (Method* method = Export_GetMethod(this, &iter)) {
-				if (strcmp(method->GetName(), name) == 0) {
-					if (curIndex == 0) {
-						_methods[this][name][index] = method;
-						return method;
+			Class* klass = this;
+			while (klass) {
+				uintptr_t iter{};
+				int curIndex = index;
+				while (Method* method = Export_GetMethod(klass, &iter)) {
+					if (strcmp(method->GetName(), name) == 0) {
+						if (curIndex == 0) {
+							_methods[klass][name][index] = method;
+							return method;
+						}
+						curIndex--;
 					}
-					curIndex--;
 				}
+
+				if (!checkParents) {
+					break;
+				}
+
+				klass = klass->GetParent();
 			}
 
 			return nullptr;
+		}
+
+		template <typename T = void, typename... Args>
+		inline T InvokeMethod(const char* name, Object* instance, Args... args) {
+			auto method = GetMethod(name);
+			if (method) {
+				return method->Invoke<T>(instance, args...);
+			}
+
+			return T();
 		}
 
 		template <typename T>
@@ -555,6 +594,8 @@ namespace Runtime {
 }
 
 namespace Types {
+	class Object;
+	class String;
 
 	class Object {
 	public:
@@ -652,18 +693,63 @@ namespace Types {
 
 			return klass->GetFieldValue<T>(name, this);
 		}
+
+		template <typename T = void, typename... Args>
+		inline T InvokeMethod(const char* name, Args... args) {
+			auto method = RuntimeClass()->GetMethod(name);
+			if (method) {
+				return method->Invoke<T>(this, args...);
+			}
+
+			return T();
+		}
+
+		inline String* ToString() {
+			return InvokeMethod<String*>("ToString");
+		}
 	};
 
 	template <typename T>
 	class BoxedValue : public Object {
-	public:
-		inline T Unbox() {
+		inline void* UnboxToPtr() {
+
+			if (!RuntimeClass()->IsValueType()) {
+				Logger::LogError("Tried to unbox non-value type: %s", RuntimeClass()->GetName());
+				return nullptr;
+			}
 #if MONO
-			RUNTIME_EXPORT_FUNC(Unbox, mono_object_unbox, T, Object*);
+			RUNTIME_EXPORT_FUNC(Unbox, mono_object_unbox, void*, Object*);
 #elif IL2CPP
-			RUNTIME_EXPORT_FUNC(Unbox, il2cpp_object_unbox, T, Object*);
+			RUNTIME_EXPORT_FUNC(Unbox, il2cpp_object_unbox, void*, Object*);
 #endif
 			return Export_Unbox(this);
+		}
+	public:
+		inline T Unbox() {
+			auto unboxed = UnboxToPtr();
+			if (!unboxed)
+				return T();
+
+			return Memory::Read<T>(reinterpret_cast<uintptr_t>(unboxed));
+		}
+
+		template <typename T = void, typename... Args>
+		inline T InvokeMethod(const char* name, Args... args) {
+			auto unboxed = UnboxToPtr();
+			if (!unboxed) {
+				return T();
+			}
+
+			auto method = RuntimeClass()->GetMethod(name);
+			if (method) {
+				return method->Invoke<T>(reinterpret_cast<Object*>(unboxed), args...);
+			}
+
+			return T();
+		}
+
+		inline String* ToString() {
+			return InvokeMethod<String*>("ToString");
 		}
 	};
 
@@ -694,7 +780,7 @@ namespace Types {
 			return Export_StringNew(Runtime::Domain::GetRootDomain(), str);
 		}
 
-		inline const wchar_t* ToWString() {
+		inline const wchar_t* ToWide() {
 
 #if MONO
 			RUNTIME_EXPORT_FUNC(StringGetChars, mono_string_chars, const wchar_t*, String*);
@@ -714,11 +800,11 @@ namespace Types {
 #endif
 
 			return Export_StringGetLength(this);
-		}
+	}
 
-		inline std::string ToString() {
+		inline std::string ToCPP() {
 			auto length = GetLength();
-			auto chars = ToWString();
+			auto chars = ToWide();
 			std::string str;
 			for (int i = 0; i < length; i++) {
 				str += static_cast<char>(chars[i]);
@@ -727,15 +813,15 @@ namespace Types {
 		}
 
 		inline bool operator==(const char* str) {
-			return strcmp(ToString().c_str(), str) == 0;
+			return strcmp(ToCPP().c_str(), str) == 0;
 		}
 
 		inline bool operator==(const std::string& str) {
-			return ToString() == str;
+			return ToCPP() == str;
 		}
 
 		inline bool operator==(String* str) {
 			return ToString() == str->ToString();
 		}
-	};
+};
 }

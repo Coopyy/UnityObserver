@@ -1,38 +1,47 @@
 #include "unity_observer.h"
 
+using namespace Runtime;
+
+struct Vector3 {
+	float x, y, z;
+};
+
 DWORD Main(LPVOID lpParam) {
 
 	Logger::Setup();
 
-	Logger::Log("Root domain: %p\n", Runtime::Domain::GetRootDomain());
+	// Player.player
+	auto plr = Domain::GetRootDomain()->GetAssembly("Assembly-CSharp")->GetClass("SDG.Unturned", "Player")->GetFieldValue<Object*>("_player");
+	Logger::Log("Player: 0x%p", plr);
 
-	auto playerClass = Runtime::Domain::GetRootDomain()->GetAssembly("Assembly-CSharp")->GetClass("SDG.Unturned", "Player");
+	// Player.player.transform
+	auto transform = plr->InvokeMethod<Object*>("get_transform");
+	Logger::Log("Transform 0x%p", transform);
 
-	auto plr = playerClass->GetFieldValue<Types::Object*>("_player");
+	// Player.player.transform.position
+	auto boxedPosition = transform->InvokeMethod<BoxedValue<Vector3>*>("get_position");
+	Logger::Log("Boxed Position 0x%p", boxedPosition);
 
-	plr->GetFieldValue<Types::Object*>("_life")->SetFieldValue("_health", 100);
+	auto pos = boxedPosition->Unbox();
+	Logger::Log("Position: %f %f %f", pos.x, pos.y, pos.z);
 
-	Logger::Log("Player: 0x%p\n", plr);
+	// Test instance value methods
+	Logger::Log("Player ToString: %s", plr->ToString()->ToCPP().c_str());
 
-	auto GetNetId = playerClass->GetMethod("GetNetId");
-    Logger::Log("GetNetId: 0x%p\n", GetNetId);
-	struct netID {
-		unsigned int id;
-	};
-	auto netId = GetNetId->Invoke<Types::BoxedValue<netID>*>(plr);
-	Logger::Log("NetId: %p\n", netId);
+	Logger::Log("Position ToString: %s", boxedPosition->ToString()->ToCPP().c_str());
 
-	auto newString = Types::String::New("Hello, World!");
-	auto newObject = Types::Object::New();
+	BoxedValue<float>* magnitdude = boxedPosition->InvokeMethod<BoxedValue<float>*>("get_magnitude");
+	Logger::Log("Position get_magnitude: %f", magnitdude->Unbox());
 
-	Logger::Log("String is Object: %d\n", newString->IsInstanceOf(Types::Object::StaticRuntimeClass()));
-	Logger::Log("Object is String: %d\n", newObject->IsInstanceOf(Types::String::StaticRuntimeClass()));
+	// Test static value methods
+	Vector3 v1 = { 100, 2, 3 };
 
-	auto stringToObject = newString->As<Types::Object>();
-	auto objectToString = newObject->As<Types::String>();
+	auto vector3Class = Domain::GetRootDomain()->GetAssembly("UnityEngine.CoreModule")->GetClass("UnityEngine", "Vector3");
+	auto distance = vector3Class->InvokeMethod<BoxedValue<float>*>("Distance", nullptr, v1, pos);
 
-	Logger::Log("String to Object cast: %p\n", stringToObject); // string derives from object, good
-	Logger::Log("Object to String cast: %p\n", objectToString); // null because cant cast object to string
+	Logger::Log("Vector3 Distance: %f", distance->Unbox());
+
+
 
 	while (!GetAsyncKeyState(VK_END)) Sleep(100);
 
