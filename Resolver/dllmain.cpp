@@ -14,34 +14,67 @@ DWORD Main(LPVOID lpParam) {
 	auto plr = Domain::GetRootDomain()->GetAssembly("Assembly-CSharp")->GetClass("SDG.Unturned", "Player")->GetFieldValue<Object*>("_player");
 	Logger::Log("Player: 0x%p", plr);
 
-	// Player.player.transform
-	auto transform = plr->InvokeMethod<Object*>("get_transform");
-	Logger::Log("Transform 0x%p", transform);
+	if (plr) {
 
-	// Player.player.transform.position
-	auto boxedPosition = transform->InvokeMethod<BoxedValue<Vector3>*>("get_position");
-	Logger::Log("Boxed Position 0x%p", boxedPosition);
+		// Player.player.transform
+		auto transform = plr->InvokeMethod<Object*>("get_transform");
+		Logger::Log("Transform 0x%p", transform);
 
-	auto pos = boxedPosition->Unbox();
-	Logger::Log("Position: %f %f %f", pos.x, pos.y, pos.z);
+		// Player.player.transform.position
+		auto boxedPosition = transform->InvokeMethod<BoxedValue<Vector3>*>("get_position");
+		Logger::Log("Boxed Position 0x%p", boxedPosition);
 
-	// Test instance value methods
-	Logger::Log("Player ToString: %s", plr->ToString()->ToCPP().c_str());
+		auto pos = boxedPosition->Unbox();
+		Logger::Log("Position: %f %f %f", pos.x, pos.y, pos.z);
 
-	Logger::Log("Position ToString: %s", boxedPosition->ToString()->ToCPP().c_str());
+		// Test instance value methods
+		Logger::Log("Player ToString: %s", plr->ToString()->ToCPP().c_str());
 
-	BoxedValue<float>* magnitdude = boxedPosition->InvokeMethod<BoxedValue<float>*>("get_magnitude");
-	Logger::Log("Position get_magnitude: %f", magnitdude->Unbox());
+		Logger::Log("Position ToString: %s", boxedPosition->ToString()->ToCPP().c_str());
 
-	// Test static value methods
-	Vector3 v1 = { 100, 2, 3 };
+		BoxedValue<float>* magnitdude = boxedPosition->InvokeMethod<BoxedValue<float>*>("get_magnitude");
+		Logger::Log("Position get_magnitude: %f", magnitdude->Unbox());
 
-	auto vector3Class = Domain::GetRootDomain()->GetAssembly("UnityEngine.CoreModule")->GetClass("UnityEngine", "Vector3");
-	auto distance = vector3Class->InvokeMethod<BoxedValue<float>*>("Distance", nullptr, v1, pos);
+		// Test static value methods
+		Vector3 v1 = { 100, 2, 3 };
 
-	Logger::Log("Vector3 Distance: %f", distance->Unbox());
+		auto vector3Class = Domain::GetRootDomain()->GetAssembly("UnityEngine.CoreModule")->GetClass("UnityEngine", "Vector3");
+		auto distance = vector3Class->InvokeMethod<BoxedValue<float>*>("Distance", nullptr, &v1, &pos);
+
+		Logger::Log("Vector3 Distance: %f", distance->Unbox());
+	}
+
+	//auto string = String::New("Hello World!");
+	//Logger::Log("String: 0x%p", string);
+
+	auto acs = Domain::GetRootDomain()->GetAssembly("vulp.gg");
+	auto ChatManager = acs->GetClass("FurFrags.Logging", "GameConsole");
+
+	Logger::Log("ChatManager: 0x%p", ChatManager);
+
+	int test = 2;
+	auto string = String::New("Hello Wo1rld!");
+
+	auto sendChat = ChatManager->GetMethod("Log");
+
+	RUNTIME_EXPORT_FUNC(MethodInvoke, mono_runtime_invoke, void*, Method*, Object*, void**, void**);
+	RUNTIME_EXPORT_FUNC(MethodGetThunk, mono_method_get_unmanaged_thunk, void*, Method*);
+
+	void* args[2] = { string, &test };
+
+	Export_MethodInvoke(sendChat, nullptr, args, nullptr);
 
 
+	//auto fn = reinterpret_cast<void(*)(void*, int, void*)>(Export_MethodGetThunk(sendChat));
+
+	Object* exception = nullptr;
+
+	
+	//fn(string, test, &exception);
+
+	if (exception) {
+		Logger::Log("Exception: %s", exception->ToString()->ToCPP().c_str());
+	}
 
 	while (!GetAsyncKeyState(VK_END)) Sleep(100);
 
@@ -57,7 +90,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 		const HANDLE hThread = CreateThread(nullptr, NULL, Main, hModule, NULL, nullptr);
 		if (hThread)
 			CloseHandle(hThread);
-	}
+	} 
 	return TRUE;
 }
 

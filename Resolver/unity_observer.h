@@ -162,21 +162,93 @@ namespace Runtime {
 			return Export_MethodGetName(this);
 		}
 
+
+		/**
+		 * Invokes the method using runtime invoke.
+		 *
+		 * @tparam T The return type of the method. Defaults to void if not specified.
+		 * @param instance The instance on which to invoke the method. If null, the method will be invoked as a static method.
+		 * @param exception Pointer to an exception object that will be set if an exception is thrown during the method invocation.
+		 * @param args The arguments to pass to the method. Value and enum types should be passed as pointers to the value.
+		 *             Reference and string types should be passed as Object pointers.
+		 * @return The return value of the method. If the return type is a value type, it will be boxed.
+		 */
 		template <typename T = void, typename... Args>
-		inline T Invoke(Object* instance, Args... args) {
+		inline T Invoke(Object* instance, Object** exception, Args... args) {
 
 #if MONO
-			RUNTIME_EXPORT_FUNC(MethodInvoke, mono_runtime_invoke, T, Method*, Object*, void**, void**);
+			RUNTIME_EXPORT_FUNC(MethodInvoke, mono_runtime_invoke, Object*, Method*, Object*, void**, Object**);
 #elif IL2CPP
-			RUNTIME_EXPORT_FUNC(MethodInvoke, il2cpp_runtime_invoke, T, Method*, Object*, void**, void**);
+			RUNTIME_EXPORT_FUNC(MethodInvoke, il2cpp_runtime_invoke, Object*, Method*, Object*, void**, Object**);
 #endif
-
+			Object* tempException = nullptr;
+			Object* result;
 			if constexpr (sizeof...(Args) > 0) {
-				void* params[] = { &args... };
-				return Export_MethodInvoke(this, instance, params, nullptr);
+				void* params[] = { args... };
+				result = Export_MethodInvoke(this, instance, params, exception ? exception : &tempException);
 			}
 			else
-				return Export_MethodInvoke(this, instance, nullptr, nullptr);
+				result = Export_MethodInvoke(this, instance, nullptr, exception ? exception : &tempException);
+
+			if constexpr (!std::is_same_v<T, void>)
+				return static_cast<T>(result);
+		}
+
+		/**
+		 * Invokes the method using unmanaged thunks.
+		 *
+		 * @tparam T The return type of the method. Defaults to void if not specified.
+		 * @param instance The instance on which to invoke the method. If null, the method will be invoked as a static method.
+		 * @param exception Pointer to an exception object that will be set if an exception is thrown during the method invocation.
+		 * @param args The arguments to pass to the method. Value and enum types should be passed directly besides ref and out parameters.
+		 *             Reference and string types should be passed as Object pointers.
+		 * @return The return value of the method. Value return types will NOT be boxed.
+		 */
+		template <typename T = void, typename... Args>
+		inline T InvokeFast(Object* instance, Object** exception, Args... args) {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(MethodGetThunk, mono_method_get_unmanaged_thunk, void*, Method*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(MethodGetThunk, il2cpp_method_get_unmanaged_thunk, void*, Method*);
+#endif
+
+			auto thunk = Export_MethodGetThunk(this);
+			if (!thunk) {
+				if constexpr (std::is_same_v<T, void>)
+					return;
+				return T();
+			}
+
+			if (instance) {
+				return reinterpret_cast<T(CALLING_CONVENTION*)(void*, Args..., Object**)>(thunk)(instance, args..., exception);
+			}
+			else {
+				return reinterpret_cast<T(CALLING_CONVENTION*)(Args..., Object**)>(thunk)(args..., exception);
+			}
+		}
+
+		inline unsigned int GetToken() {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(MethodGetToken, mono_method_get_token, unsigned int, Method*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(MethodGetToken, il2cpp_method_get_token, unsigned int, Method*);
+#endif
+
+			return Export_MethodGetToken(this);
+		}
+
+		inline Class* GetClass() {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(MethodGetClass, mono_method_get_class, Class*, Method*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(MethodGetClass, il2cpp_method_get_class, Class*, Method*);
+#endif
+
+			return Export_MethodGetClass(this);
+
 		}
 	};
 
@@ -272,6 +344,7 @@ namespace Runtime {
 	};
 
 	class Assembly {
+	public:
 		inline Image* GetImage() {
 #if MONO
 			RUNTIME_EXPORT_FUNC(AssemblyGetImage, mono_assembly_get_image, Image*, Assembly*);
@@ -280,7 +353,6 @@ namespace Runtime {
 #endif
 			return Export_AssemblyGetImage(this);
 		}
-	public:
 		inline const char* GetName() {
 #if MONO
 			RUNTIME_EXPORT_FUNC(AssemblyGetName, mono_assembly_get_name, uintptr_t, Assembly*);
@@ -559,7 +631,7 @@ namespace Runtime {
 		inline T InvokeMethod(const char* name, Object* instance, Args... args) {
 			auto method = GetMethod(name);
 			if (method) {
-				return method->Invoke<T>(instance, args...);
+				return method->Invoke<T>(instance, nullptr, args...);
 			}
 
 			return T();
@@ -609,13 +681,9 @@ namespace Types {
 			RUNTIME_EXPORT_FUNC(GetObjectClass, mono_get_object_class, Runtime::Class*);
 			_class = Export_GetObjectClass();
 #elif IL2CPP
-			static Runtime::Class* obj = nullptr;
-			if (!obj) {
-				auto domain = Runtime::Domain::GetRootDomain();
-				auto assembly = domain->GetAssembly("mscorlib");
-				obj = assembly->GetClass("System", "Object");
-			}
-			_class = obj;
+			auto domain = Runtime::Domain::GetRootDomain();
+			auto assembly = domain->GetAssembly("mscorlib");
+			_class = assembly->GetClass("System", "Object");
 #endif
 			return _class;
 		}
@@ -698,7 +766,7 @@ namespace Types {
 		inline T InvokeMethod(const char* name, Args... args) {
 			auto method = RuntimeClass()->GetMethod(name);
 			if (method) {
-				return method->Invoke<T>(this, args...);
+				return method->Invoke<T>(this, nullptr, args...);
 			}
 
 			return T();
@@ -742,7 +810,7 @@ namespace Types {
 
 			auto method = RuntimeClass()->GetMethod(name);
 			if (method) {
-				return method->Invoke<T>(reinterpret_cast<Object*>(unboxed), args...);
+				return method->Invoke<T>(reinterpret_cast<Object*>(unboxed), nullptr, args...);
 			}
 
 			return T();
@@ -757,17 +825,14 @@ namespace Types {
 	public:
 		static Runtime::Class* StaticRuntimeClass() {
 			static Runtime::Class* _class = nullptr;
-			if (_class) {
+			if (_class)
 				return _class;
-			}
 
-			static Runtime::Class* obj = nullptr;
-			if (!obj) {
-				auto domain = Runtime::Domain::GetRootDomain();
-				auto assembly = domain->GetAssembly("mscorlib");
-				obj = assembly->GetClass("System", "String");
-			}
-			_class = obj;
+			auto domain = Runtime::Domain::GetRootDomain();
+			auto assembly = domain->GetAssembly("mscorlib");
+			_class = assembly->GetClass("System", "String");
+
+			return _class;
 		}
 
 		static String* New(const char* str) {
@@ -800,7 +865,7 @@ namespace Types {
 #endif
 
 			return Export_StringGetLength(this);
-	}
+		}
 
 		inline std::string ToCPP() {
 			auto length = GetLength();
@@ -821,7 +886,39 @@ namespace Types {
 		}
 
 		inline bool operator==(String* str) {
-			return ToString() == str->ToString();
+			return ToCPP() == str->ToCPP();
 		}
-};
+	};
+
+	template <typename T>
+	class GCHandle {
+		T* _object;
+		void* _handle;
+	public:
+		GCHandle(T* object, bool pinned = false) : _object(object) {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(GCHandleNew, mono_gchandle_new_v2, void*, T*, bool);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(GCHandleNew, il2cpp_gchandle_new, void*, T*, bool);
+#endif
+
+			_handle = Export_GCHandleNew(object, pinned);
+		}
+
+		~GCHandle() {
+
+#if MONO
+			RUNTIME_EXPORT_FUNC(GCHandleFree, mono_gchandle_free_v2, void, void*);
+#elif IL2CPP
+			RUNTIME_EXPORT_FUNC(GCHandleFree, il2cpp_gchandle_free, void, void*);
+#endif
+
+			Export_GCHandleFree(_handle);
+		}
+
+		inline T* Get() {
+			return _object;
+		}
+	};
 }
