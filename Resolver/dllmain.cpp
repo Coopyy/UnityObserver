@@ -44,37 +44,10 @@ DWORD Main(LPVOID lpParam) {
 		Logger::Log("Vector3 Distance: %f", distance->Unbox());
 	}
 
-	//auto string = String::New("Hello World!");
-	//Logger::Log("String: 0x%p", string);
+	auto DebugLog = Domain::GetRootDomain()->GetAssembly("UnityEngine.CoreModule")->GetClass("UnityEngine", "Debug")->GetMethod("Log");
 
-	auto acs = Domain::GetRootDomain()->GetAssembly("vulp.gg");
-	auto ChatManager = acs->GetClass("FurFrags.Logging", "GameConsole");
-
-	Logger::Log("ChatManager: 0x%p", ChatManager);
-
-	int test = 2;
-	auto string = String::New("Hello Wo1rld!");
-
-	auto sendChat = ChatManager->GetMethod("Log");
-
-	RUNTIME_EXPORT_FUNC(MethodInvoke, mono_runtime_invoke, void*, Method*, Object*, void**, void**);
-	RUNTIME_EXPORT_FUNC(MethodGetThunk, mono_method_get_unmanaged_thunk, void*, Method*);
-
-	void* args[2] = { string, &test };
-
-	Export_MethodInvoke(sendChat, nullptr, args, nullptr);
-
-
-	//auto fn = reinterpret_cast<void(*)(void*, int, void*)>(Export_MethodGetThunk(sendChat));
-
-	Object* exception = nullptr;
-
-	
-	//fn(string, test, &exception);
-
-	if (exception) {
-		Logger::Log("Exception: %s", exception->ToString()->ToCPP().c_str());
-	}
+	DebugLog->Invoke(nullptr, String::New("Invoke"));
+	DebugLog->InvokeFast(nullptr, String::New("InvokeFast"));
 
 	while (!GetAsyncKeyState(VK_END)) Sleep(100);
 
