@@ -93,35 +93,49 @@ namespace Runtime {
 	using namespace Types;
 
 	class Method {
+		void* GetThunk();
 	public:
 		const char* GetName();
 
 		/**
-		 * Invokes the method using runtime invoke.
+		 * @brief Invokes the method using runtime invoke.
 		 *
 		 * @tparam T The return type of the method. Defaults to void if not specified.
 		 * @param instance The instance on which to invoke the method. If null, the method will be invoked as a static method.
 		 * @param args The arguments to pass to the method. Value and enum types should be passed as pointers to the value.
-		 *             Reference and string types should be passed as Object pointers.
+		 * Reference and string types should be passed as Object pointers.
+		 * 
 		 * @return The return value of the method. If the return type is a value type, it will be boxed.
 		 */
 		template <typename T = void, typename... Args>
 		T Invoke(Object* instance, Args... args);
 
 		/**
-		 * Invokes the method using unmanaged thunks.
+		 * @brief Invokes the method using unmanaged thunks.
 		 *
 		 * @tparam T The return type of the method. Defaults to void if not specified.
 		 * @param instance The instance on which to invoke the method. If null, the method will be invoked as a static method.
 		 * @param args The arguments to pass to the method. Value and enum types should be passed directly besides ref and out parameters.
-		 *             Reference and string types should be passed as Object pointers.
+		 * Reference and string types should be passed as Object pointers.
+		 * 
 		 * @return The return value of the method. Value return types will NOT be boxed.
 		 */
 		template <typename T = void, typename... Args>
 		T InvokeFast(Object* instance, Args... args);
 
-		unsigned int GetToken();
+		/**
+		 * @brief Retrieves the thunk for the method with specified signature.
+		 *
+		 * @tparam T The return type of the method.
+		 * @tparam Args The argument types of the method.
+		 * @return A function pointer with the specified signature representing the method thunk.
+		 * The first parameter is the instance on which to invoke the method, null if static.
+		 * The last argument is a pointer to an Object pointer which will be set to the exception if one is thrown, null to not catch exceptions.
+		 */
+		template <typename T, typename... Args>
+		T(CALLING_CONVENTION* GetThunk())(Args..., Object**);
 
+		unsigned int GetToken();
 		Class* GetClass();
 	};
 
@@ -169,27 +183,19 @@ namespace Runtime {
 
 	class Class {
 		VTable* GetVTable();
-
 		bool GetBitFieldValue(int index);
 	public:
 		Object* New();
-
 		const char* GetName();
-
 		Type* GetType();
-
 		Class* GetParent();
+		bool IsSubclassOf(Class* parent);
+		bool IsValueType();
+		Field* GetField(const char* name);
+		Method* GetMethod(const char* name, int index = 0, bool checkParents = true);
 
 		template <typename T>
 		BoxedValue<T>* Box(T* address);
-
-		bool IsSubclassOf(Class* parent);
-
-		bool IsValueType();
-
-		Field* GetField(const char* name);
-
-		Method* GetMethod(const char* name, int index = 0, bool checkParents = true);
 
 		template <typename T = void, typename... Args>
 		T InvokeMethod(const char* name, Object* instance, Args... args);
@@ -209,14 +215,11 @@ namespace Types {
 	class Object {
 	public:
 		static Runtime::Class* StaticRuntimeClass();
-
 		static Object* New();
-
 		Runtime::Class* RuntimeClass();
-
 		Object* GetType();
-
 		bool IsInstanceOf(Runtime::Class* klass);
+		String* ToString();
 
 		template <typename T>
 		T* As();
@@ -229,8 +232,6 @@ namespace Types {
 
 		template <typename T = void, typename... Args>
 		T InvokeMethod(const char* name, Args... args);
-
-		String* ToString();
 	};
 
 	template <typename T>
@@ -238,29 +239,21 @@ namespace Types {
 		void* UnboxToPtr();
 	public:
 		T Unbox();
+		String* ToString();
 
 		template <typename T = void, typename... Args>
 		T InvokeMethod(const char* name, Args... args);
-
-		String* ToString();
 	};
 
 	class String : public Object {
 	public:
 		static Runtime::Class* StaticRuntimeClass();
-
 		static String* New(const char* str);
-
 		const wchar_t* ToWide();
-
 		int GetLength();
-
 		std::string ToCPP();
-
 		bool operator==(const char* str);
-
 		bool operator==(const std::string& str);
-
 		bool operator==(String* str);
 	};
 
@@ -270,9 +263,7 @@ namespace Types {
 		void* _handle;
 	public:
 		GCHandle(T* object, bool pinned = false);
-
 		~GCHandle();
-
 		T* Get();
 	};
 }
@@ -412,16 +403,8 @@ namespace Runtime {
 
 	template <typename T, typename... Args>
 	inline T Method::InvokeFast(Object* instance, Args... args) {
-
-#if MONO
-		RUNTIME_EXPORT_FUNC(MethodGetThunk, mono_method_get_unmanaged_thunk, void*, Method*);
-#elif IL2CPP
-		RUNTIME_EXPORT_FUNC(MethodGetThunk, il2cpp_method_get_unmanaged_thunk, void*, Method*);
-#endif
-
-		auto thunk = Export_MethodGetThunk(this);
+		auto thunk = GetThunk();
 		if (!thunk) {
-			Logger::LogError("Failed to get method thunk: %s", GetName());
 			if constexpr (std::is_same_v<T, void>)
 				return;
 			return T();
@@ -444,6 +427,27 @@ namespace Runtime {
 		};
 
 		return instance ? invoke(instance, args...) : invoke(args...);
+	}
+
+	inline void* Method::GetThunk() {
+#if MONO
+		RUNTIME_EXPORT_FUNC(MethodGetThunk, mono_method_get_unmanaged_thunk, void*, Method*);
+#elif IL2CPP
+		RUNTIME_EXPORT_FUNC(MethodGetThunk, il2cpp_method_get_unmanaged_thunk, void*, Method*);
+#endif
+
+		auto thunk = Export_MethodGetThunk(this);
+		if (!thunk) {
+			Logger::LogError("Failed to get method thunk: %s", GetName());
+			return nullptr;
+		}
+
+		return thunk;
+	}
+
+	template <typename T, typename... Args>
+	inline T(CALLING_CONVENTION* Method::GetThunk())(Args..., Object**) {
+		return reinterpret_cast<T(CALLING_CONVENTION*)(Args..., Object**)>(GetThunk());
 	}
 
 	inline unsigned int Method::GetToken() {

@@ -49,6 +49,15 @@ DWORD Main(LPVOID lpParam) {
 	DebugLog->Invoke(nullptr, String::New("Invoke"));
 	DebugLog->InvokeFast(nullptr, String::New("InvokeFast"));
 
+
+	auto DebugLogThunk = DebugLog->GetThunk<void, String*>();
+	Object* exception = nullptr;
+
+	DebugLogThunk(String::New("InvokeThunk"), &exception);
+
+	if (exception)
+		Logger::LogException(exception);
+
 	while (!GetAsyncKeyState(VK_END)) Sleep(100);
 
 	Logger::Cleanup();
