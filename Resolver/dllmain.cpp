@@ -32,16 +32,20 @@ DWORD Main(LPVOID lpParam) {
 
 		Logger::Log("Position ToString: %s", boxedPosition->ToString()->ToCPP().c_str());
 
-		BoxedValue<float>* magnitdude = boxedPosition->InvokeMethod<BoxedValue<float>*>("get_magnitude");
-		Logger::Log("Position get_magnitude: %f", magnitdude->Unbox());
+		BoxedValue<float>* magnitude = boxedPosition->InvokeMethod<BoxedValue<float>*>("get_magnitude");
+		Logger::Log("Position get_magnitude: %f", magnitude->Unbox());
 
 		// Test static value methods
 		Vector3 v1 = { 100, 2, 3 };
 
-		auto vector3Class = Domain::GetRootDomain()->GetAssembly("UnityEngine.CoreModule")->GetClass("UnityEngine", "Vector3");
-		auto distance = vector3Class->InvokeMethod<BoxedValue<float>*>("Distance", nullptr, &v1, &pos);
+		auto Vector3Class = Domain::GetRootDomain()->GetAssembly("UnityEngine.CoreModule")->GetClass("UnityEngine", "Vector3");
+		auto Vector3Distance = Vector3Class->GetMethod("Distance");
+
+		auto distance = Vector3Distance->Invoke<BoxedValue<float>*>(nullptr, &v1, &pos);
+		auto distanceFast = Vector3Distance->InvokeFast<float>(nullptr, boxedPosition, Vector3Class->Box<Vector3>(&v1));
 
 		Logger::Log("Vector3 Distance: %f", distance->Unbox());
+		Logger::Log("Vector3 Distance Fast: %f", distanceFast);
 	}
 
 	auto DebugLog = Domain::GetRootDomain()->GetAssembly("UnityEngine.CoreModule")->GetClass("UnityEngine", "Debug")->GetMethod("Log");

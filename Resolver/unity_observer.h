@@ -115,10 +115,10 @@ namespace Runtime {
 		 *
 		 * @tparam T The return type of the method. Defaults to void if not specified.
 		 * @param instance The instance on which to invoke the method. If null, the method will be invoked as a static method.
-		 * @param args The arguments to pass to the method. Value and enum types should be passed directly besides ref and out parameters.
+		 * @param args The arguments to pass to the method. Non-primitive value types must be boxed, enums must be cast to their underlying type.
 		 * Reference and string types should be passed as Object pointers.
 		 * 
-		 * @return The return value of the method. Value return types will NOT be boxed.
+		 * @return The return value of the method. Value return types will be boxed. Primitives will not.
 		 */
 		template <typename T = void, typename... Args>
 		T InvokeFast(Object* instance, Args... args);
