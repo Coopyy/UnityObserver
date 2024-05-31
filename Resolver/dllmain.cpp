@@ -24,8 +24,8 @@ DWORD Main(LPVOID lpParam) {
 		auto boxedPosition = transform->InvokeMethod<BoxedValue<Vector3>*>("get_position");
 		Logger::Log("Boxed Position 0x%p", boxedPosition);
 
-		auto pos = boxedPosition->Unbox();
-		Logger::Log("Position: %f %f %f", pos.x, pos.y, pos.z);
+		auto localPos = boxedPosition->Unbox();
+		Logger::Log("Position: %f %f %f", localPos.x, localPos.y, localPos.z);
 
 		// Test instance value methods
 		Logger::Log("Player ToString: %s", plr->ToString()->ToCPP().c_str());
@@ -36,16 +36,18 @@ DWORD Main(LPVOID lpParam) {
 		Logger::Log("Position get_magnitude: %f", magnitude->Unbox());
 
 		// Test static value methods
-		Vector3 v1 = { 100, 2, 3 };
+		Vector3 somePos = { 100, 2, 3 };
 
 		auto Vector3Class = Domain::GetRootDomain()->GetAssembly("UnityEngine.CoreModule")->GetClass("UnityEngine", "Vector3");
 		auto Vector3Distance = Vector3Class->GetMethod("Distance");
 
-		auto distance = Vector3Distance->Invoke<BoxedValue<float>*>(nullptr, &v1, &pos);
-		auto distanceFast = Vector3Distance->InvokeFast<float>(nullptr, boxedPosition, Vector3Class->Box<Vector3>(&v1));
+		auto distance = Vector3Distance->Invoke<BoxedValue<float>*>(nullptr, &somePos, &localPos)->Unbox();
+		auto distanceFast = Vector3Distance->InvokeFast<float>(nullptr, Vector3Class->Box<Vector3>(&somePos), Vector3Class->Box<Vector3>(&localPos));
+		auto distanceFaster = Vector3Distance->InvokeUnsafe<float>(nullptr, &somePos, &localPos);
 
-		Logger::Log("Vector3 Distance: %f", distance->Unbox());
+		Logger::Log("Vector3 Distance: %f", distance);
 		Logger::Log("Vector3 Distance Fast: %f", distanceFast);
+		Logger::Log("Vector3 Distance Faster: %f", distanceFaster);
 	}
 
 	auto DebugLog = Domain::GetRootDomain()->GetAssembly("UnityEngine.CoreModule")->GetClass("UnityEngine", "Debug")->GetMethod("Log");
@@ -76,7 +78,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 		const HANDLE hThread = CreateThread(nullptr, NULL, Main, hModule, NULL, nullptr);
 		if (hThread)
 			CloseHandle(hThread);
-	} 
+	}
 	return TRUE;
 }
 
