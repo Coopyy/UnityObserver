@@ -2,6 +2,15 @@
 // 1: IL2CPP
 #define RUNTIME 0
 
+// Invokation method to use by default when invoking methods from objects or classes.
+// Note that this changes the signature of the InvokeMethod function, so you may need to update your code.
+// 0: Runtime Invoke
+// 1: Unmanaged Thunks
+// 2: Compiled Function Pointers (Not Recommended)
+#define DEFAULT_INVOKATION_METHOD 1
+
+// TODO: Add options for caching stuff
+
 // END OF CONFIGURATION
 
 #include <cstdint>
@@ -24,6 +33,16 @@
 #define RUNTIME_DLL "GameAssembly.dll"
 #else
 #error "Invalid Runtime"
+#endif
+
+#if DEFAULT_INVOKATION_METHOD == 0
+#define DEFAULT_INVOKATION Invoke
+#elif DEFAULT_INVOKATION_METHOD == 1
+#define DEFAULT_INVOKATION InvokeFast
+#elif DEFAULT_INVOKATION_METHOD == 2
+#define DEFAULT_INVOKATION InvokeUnsafe
+#else
+#error "Invalid Default Invokation Method"
 #endif
 
 #define THIS reinterpret_cast<uintptr_t>(this)
@@ -97,6 +116,9 @@ namespace Runtime {
 		void* GetCompiled();
 	public:
 		const char* GetName();
+		unsigned int GetToken();
+		Class* GetClass();
+		const char* GetSignature();
 
 		/**
 		 * @brief Invokes the method using runtime invoke.
@@ -121,8 +143,8 @@ namespace Runtime {
 		 *
 		 * @return The return value of the method. Value return types will be boxed. Primitives will not.
 		 */
-		template <typename T = void, typename... Args>
-		T InvokeFast(Object* instance, Args... args);
+		template <typename T = void, typename I, typename... Args>
+		T InvokeFast(I instance, Args... args);
 
 		/**
 		 * @brief Invokes the method using the compiled function pointer directly.
@@ -131,13 +153,13 @@ namespace Runtime {
 		 *
 		 * @tparam T The return type of the method. Defaults to void if not specified.
 		 * @param instance The instance on which to invoke the method. If null, the method will be invoked as a static method.
-		 * @param args The arguments to pass to the method. Primitives and enums are passed by value. Value types are passed as pointers to their value. 
+		 * @param args The arguments to pass to the method. Primitives and enums are passed by value. Value types are passed as pointers to their value.
 		 * Reference and string types should be passed as Object pointers.
 		 *
 		 * @return The return value of the method. Value return types will NOT be boxed.
 		 */
-		template <typename T = void, typename... Args>
-		T InvokeUnsafe(Object* instance, Args... args);
+		template <typename T = void, typename I, typename... Args>
+		T InvokeUnsafe(I instance, Args... args);
 
 		/**
 		 * @brief Retrieves the thunk for the method with specified signature.
@@ -161,9 +183,6 @@ namespace Runtime {
 		 */
 		template <typename T, typename... Args>
 		T(CALLING_CONVENTION* GetCompiled())(Args...);
-
-		unsigned int GetToken();
-		Class* GetClass();
 	};
 
 	class Field {
@@ -224,8 +243,8 @@ namespace Runtime {
 		template <typename T>
 		BoxedValue<T>* Box(T* address);
 
-		template <typename T = void, typename... Args>
-		T InvokeMethod(const char* name, Object* instance, Args... args);
+		template <typename T = void, typename I, typename... Args>
+		T InvokeMethod(const char* name, I instance, Args... args);
 
 		template <typename T>
 		void SetFieldValue(const char* name, T value, Object* instance = nullptr);
@@ -270,6 +289,8 @@ namespace Types {
 
 		template <typename T = void, typename... Args>
 		T InvokeMethod(const char* name, Args... args);
+
+		void Set(T value);
 	};
 
 	class String : public Object {
@@ -277,7 +298,7 @@ namespace Types {
 		static Runtime::Class* StaticRuntimeClass();
 		static String* New(const char* str);
 		const wchar_t* ToWide();
-		int GetLength();
+		int Length();
 		std::string ToCPP();
 		bool operator==(const char* str);
 		bool operator==(const std::string& str);
@@ -404,6 +425,25 @@ namespace Runtime {
 		return Export_MethodGetName(this);
 	}
 
+	inline const char* Method::GetSignature() {
+
+#if MONO
+		RUNTIME_EXPORT_FUNC(MethodGetSignature, mono_method_signature, void*, Method*);
+		RUNTIME_EXPORT_FUNC(SignatureGetDesc, mono_signature_full_name, const char*, void*);
+#elif IL2CPP
+		RUNTIME_EXPORT_FUNC(MethodGetSignature, il2cpp_method_signature, void*, Method*);
+		RUNTIME_EXPORT_FUNC(SignatureGetDesc, il2cpp_signature_full_name, const char*, void*);
+#endif
+
+		auto signature = Export_MethodGetSignature(this);
+		if (!signature) {
+			Logger::LogError("Failed to get method signature: %s", GetName());
+			return nullptr;
+		}
+
+		return Export_SignatureGetDesc(signature);
+	}
+
 	template <typename T, typename... Args>
 	inline T Method::Invoke(Object* instance, Args... args) {
 
@@ -428,8 +468,8 @@ namespace Runtime {
 			return static_cast<T>(result);
 	}
 
-	template <typename T, typename... Args>
-	inline T Method::InvokeFast(Object* instance, Args... args) {
+	template <typename T, typename I, typename... Args>
+	inline T Method::InvokeFast(I instance, Args... args) {
 		auto thunk = GetThunk();
 		if (!thunk) {
 			if constexpr (std::is_same_v<T, void>)
@@ -453,11 +493,14 @@ namespace Runtime {
 			}
 		};
 
-		return instance ? invoke(instance, args...) : invoke(args...);
+		if constexpr (std::is_pointer_v<I> || std::is_same_v<I, std::nullptr_t>)
+			return instance ? invoke(instance, args...) : invoke(args...);
+		else
+			return invoke(instance, args...);
 	}
 
-	template <typename T, typename... Args>
-	inline T Method::InvokeUnsafe(Object* instance, Args... args) {
+	template <typename T, typename I, typename... Args>
+	inline T Method::InvokeUnsafe(I instance, Args... args) {
 		auto thunk = GetCompiled();
 		if (!thunk) {
 			if constexpr (std::is_same_v<T, void>)
@@ -469,7 +512,10 @@ namespace Runtime {
 			return reinterpret_cast<T(CALLING_CONVENTION*)(IArgs...)>(thunk)(invokeArgs...);
 		};
 
-		return instance ? invoke(instance, args...) : invoke(args...);
+		if constexpr (std::is_pointer_v<I> || std::is_same_v<I, std::nullptr_t>)
+			return instance ? invoke(instance, args...) : invoke(args...);
+		else
+			return invoke(instance, args...);
 	}
 
 	inline void* Method::GetThunk() {
@@ -897,16 +943,17 @@ namespace Runtime {
 			klass = klass->GetParent();
 		}
 
+		Logger::LogError("Failed to get method: '%s'", name);
 		return nullptr;
 	}
 
-	template <typename T, typename... Args>
-	inline T Class::InvokeMethod(const char* name, Object* instance, Args... args) {
+	template <typename T, typename I, typename... Args>
+	inline T Class::InvokeMethod(const char* name, I instance, Args... args) {
 		auto method = GetMethod(name);
 		if (method) {
-			return method->Invoke<T>(instance, args...);
+			return method->DEFAULT_INVOKATION<T>(instance, args...);
 		}
-
+		Logger::LogError("Failed to invoke method '%s' from class '%s'", name, GetName());
 		return T();
 	}
 
@@ -936,7 +983,7 @@ namespace Runtime {
 			return field->Get<T>(instance);
 	}
 #pragma endregion
-	}
+}
 
 namespace Types {
 #pragma region Object
@@ -1033,12 +1080,7 @@ namespace Types {
 
 	template <typename T, typename... Args>
 	inline T Object::InvokeMethod(const char* name, Args... args) {
-		auto method = RuntimeClass()->GetMethod(name);
-		if (method) {
-			return method->Invoke<T>(this, args...);
-		}
-
-		return T();
+		return RuntimeClass()->InvokeMethod<T>(name, this, args...);
 	}
 
 	inline String* Object::ToString() {
@@ -1049,6 +1091,11 @@ namespace Types {
 	template<typename T>
 	inline void* BoxedValue<T>::UnboxToPtr()
 	{
+		if (!this) {
+			Logger::LogError("Tried to unbox null object");
+			return nullptr;
+		}
+
 		if (!RuntimeClass()->IsValueType()) {
 			Logger::LogError("Tried to unbox non-value type: %s", RuntimeClass()->GetName());
 			return nullptr;
@@ -1079,18 +1126,29 @@ namespace Types {
 			return T();
 		}
 
-		auto method = RuntimeClass()->GetMethod(name);
-		if (method) {
-			return method->Invoke<T>(reinterpret_cast<Object*>(unboxed), nullptr, args...);
-		}
+#if DEFAULT_INVOKATION_METHOD == 0
+		return RuntimeClass()->InvokeMethod<T>(name, reinterpret_cast<Object*>(unboxed), args...);
+#elif DEFAULT_INVOKATION_METHOD == 1
+		return RuntimeClass()->InvokeMethod<T>(name, THIS, args...);
+#elif DEFAULT_INVOKATION_METHOD == 2
+		return RuntimeClass()->InvokeMethod<T>(name, Memory::Read<C>(THIS), args...);
+#endif
+	}
 
-		return T();
+	template<typename T>
+	inline void BoxedValue<T>::Set(T value) {
+		auto unboxed = UnboxToPtr();
+		if (!unboxed)
+			return;
+
+		Memory::Write(reinterpret_cast<uintptr_t>(unboxed), value);
 	}
 
 	template<typename T>
 	inline String* BoxedValue<T>::ToString() {
 		return InvokeMethod<String*>("ToString");
 	}
+
 
 #pragma endregion
 #pragma region String
@@ -1127,7 +1185,7 @@ namespace Types {
 		return Export_StringGetChars(this);
 	}
 
-	inline int String::GetLength() {
+	inline int String::Length() {
 
 #if MONO
 		RUNTIME_EXPORT_FUNC(StringGetLength, mono_string_length, int, String*);
@@ -1139,7 +1197,7 @@ namespace Types {
 	}
 
 	inline std::string String::ToCPP() {
-		auto length = GetLength();
+		auto length = Length();
 		auto chars = ToWide();
 		std::string str;
 		for (int i = 0; i < length; i++) {
