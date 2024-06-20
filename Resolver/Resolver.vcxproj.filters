@@ -23,5 +23,11 @@
     <ClInclude Include="unity_observer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="tests\sdk_poc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="tests\behavior_hooks.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

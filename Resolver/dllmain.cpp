@@ -1,4 +1,8 @@
 #include "unity_observer.h"
+
+#include "tests/behavior_hooks.h" 
+//#include "tests/sdk_poc.h
+
 #include <chrono>
 using namespace Runtime;
 
@@ -9,6 +13,8 @@ struct Vector3 {
 DWORD Main(LPVOID lpParam) {
 
 	Logger::Setup();
+
+	hooksTest();
 
 	// Player.player
 	auto plr = Domain::GetRootDomain()->GetAssembly("Assembly-CSharp")->GetClass("SDG.Unturned", "Player")->GetFieldValue<Object*>("_player");
@@ -29,7 +35,7 @@ DWORD Main(LPVOID lpParam) {
 		Logger::Log("Player Position: %f %f %f", localPos.x, localPos.y, localPos.z);
 		Logger::Log("Player Position ToString: %s", transform->ToString()->ToCPP().c_str());
 
-		// Test static value methods
+		// Test static value methods, benchmarks
 		Logger::Log("----------------------");
 
 		Vector3 somePos = { 100, 2, 3 };
@@ -37,7 +43,7 @@ DWORD Main(LPVOID lpParam) {
 		auto Vector3Class = Domain::GetRootDomain()->GetAssembly("UnityEngine.CoreModule")->GetClass("UnityEngine", "Vector3");
 		auto Vector3Distance = Vector3Class->GetMethod("Distance");
 
-		// make sure the method is compiled and thunks are generated
+		// Make sure the method is compiled and thunks are generated
 		Vector3Distance->GetCompiled<void>();
 		Vector3Distance->GetThunk<void>();
 
@@ -68,6 +74,7 @@ DWORD Main(LPVOID lpParam) {
 		Logger::Log("ToString from boxed instance: %s", ts->ToCPP().c_str());
 	}
 
+	// Static method tests with strings
 	auto DebugLog = Domain::GetRootDomain()->GetAssembly("UnityEngine.CoreModule")->GetClass("UnityEngine", "Debug")->GetMethod("Log");
 
 	DebugLog->Invoke(nullptr, String::New("Invoke"));

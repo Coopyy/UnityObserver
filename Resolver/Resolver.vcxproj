@@ -146,6 +146,8 @@
     <ClCompile Include="dllmain.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="tests\behavior_hooks.h" />
+    <ClInclude Include="tests\sdk_poc.h" />
     <ClInclude Include="unity_observer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

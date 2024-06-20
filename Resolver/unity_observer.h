@@ -1,3 +1,9 @@
+#pragma once
+#ifndef UNITY_OBSERVER
+#define UNITY_OBSERVER
+
+// BEGIN CONFIGURATION
+
 // 0: Mono
 // 1: IL2CPP
 #define RUNTIME 0
@@ -1251,3 +1257,4 @@ namespace Types {
 }
 
 #pragma endregion
+#endif
