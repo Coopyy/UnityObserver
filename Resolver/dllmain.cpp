@@ -91,8 +91,8 @@ DWORD Main(LPVOID lpParam) {
 
 	while (!GetAsyncKeyState(VK_END)) Sleep(100);
 
-	Logger::Cleanup();
 	hooksCleanup();
+	Logger::Cleanup();
 
 	FreeLibraryAndExitThread(static_cast<HMODULE>(lpParam), EXIT_SUCCESS);
 }

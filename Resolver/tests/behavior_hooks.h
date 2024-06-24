@@ -73,7 +73,6 @@ inline void hooksTest() {
 	hookGUI();
 }
 
-// todo: fix this fuckign dying
 inline void hooksCleanup() {
 	Logger::Log("Cleaning up hooks");
 
