@@ -13,7 +13,7 @@ struct Vector3 {
 DWORD Main(LPVOID lpParam) {
 
 	Logger::Setup();
-
+	
 	hooksTest();
 
 	// Player.player
@@ -92,6 +92,7 @@ DWORD Main(LPVOID lpParam) {
 	while (!GetAsyncKeyState(VK_END)) Sleep(100);
 
 	Logger::Cleanup();
+	hooksCleanup();
 
 	FreeLibraryAndExitThread(static_cast<HMODULE>(lpParam), EXIT_SUCCESS);
 }

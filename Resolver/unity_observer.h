@@ -237,6 +237,8 @@ namespace Runtime {
 		VTable* GetVTable();
 		bool GetBitFieldValue(int index);
 	public:
+		static Class* Find(const char* fullName);
+
 		Object* New();
 		const char* GetName();
 		Type* GetType();
@@ -798,6 +800,35 @@ namespace Runtime {
 	}
 #pragma endregion
 #pragma region Class
+	inline Class* Class::Find(const char* fullName) {
+		static std::unordered_map<std::string, Class*> _classes;
+
+		if (_classes.find(fullName) != _classes.end()) {
+			return _classes[fullName];
+		}
+
+		std::string name(fullName);
+		std::string nameSpace;
+		std::string className = name;
+
+		size_t lastDot = name.find_last_of('.');
+		if (lastDot != std::string::npos) {
+			nameSpace = name.substr(0, lastDot);
+			className = name.substr(lastDot + 1);
+		}
+
+		auto domain = Domain::GetRootDomain();
+		for (auto assembly : domain->GetAssemblies()) {
+			auto klass = assembly->GetClass(nameSpace.empty() ? nullptr : nameSpace.c_str(), className.c_str());
+			if (klass) {
+				_classes[fullName] = klass;
+				return klass;
+			}
+		}
+
+		return nullptr;
+	}
+
 	inline VTable* Class::GetVTable() {
 		static std::unordered_map<Class*, VTable*> _vtables;
 		if (_vtables.find(this) != _vtables.end()) {
