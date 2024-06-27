@@ -14,11 +14,12 @@ DWORD Main(LPVOID lpParam) {
 
 	Logger::Setup();
 	
-	hooksTest();
-
 	// Player.player
 	auto plr = Domain::GetRootDomain()->GetAssembly("Assembly-CSharp")->GetClass("SDG.Unturned", "Player")->GetFieldValue<Object*>("_player");
 	Logger::Log("Player: 0x%p", plr);
+
+	hooksTest();
+
 
 	if (plr) {
 

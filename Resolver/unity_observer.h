@@ -487,7 +487,7 @@ namespace Runtime {
 
 		Object* exception = nullptr;
 
-		static auto invoke = [&]<typename ... IArgs> (IArgs... invokeArgs) {
+		auto invoke = [&]<typename ... IArgs> (IArgs... invokeArgs) {
 			if constexpr (std::is_same_v<T, void>) {
 				reinterpret_cast<void(CALLING_CONVENTION*)(IArgs..., Object**)>(thunk)(invokeArgs..., &exception);
 				if (exception)
@@ -516,7 +516,7 @@ namespace Runtime {
 			return T();
 		}
 
-		static auto invoke = [&]<typename ... IArgs> (IArgs... invokeArgs) {
+		auto invoke = [&]<typename ... IArgs> (IArgs... invokeArgs) {
 			return reinterpret_cast<T(CALLING_CONVENTION*)(IArgs...)>(thunk)(invokeArgs...);
 		};
 
@@ -527,6 +527,11 @@ namespace Runtime {
 	}
 
 	inline void* Method::GetThunk() {
+		static std::unordered_map<Method*, void*> _thunks;
+		if (_thunks.find(this) != _thunks.end()) {
+			return _thunks[this];
+		}
+
 #if MONO
 		RUNTIME_EXPORT_FUNC(MethodGetThunk, mono_method_get_unmanaged_thunk, void*, Method*);
 #elif IL2CPP
@@ -539,6 +544,7 @@ namespace Runtime {
 			return nullptr;
 		}
 
+		_thunks[this] = thunk;
 		return thunk;
 	}
 
